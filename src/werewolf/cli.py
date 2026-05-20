@@ -26,23 +26,23 @@ def cmd_bootstrap(n: int = 8):
     cfg = load_config()
     prefix = "ww-"
     claude_cmd = "claude --dangerously-skip-permissions --name"
-    players_base = BASE_DIR / "data" / "players"
-    players_base.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime, timezone
+    from werewolf.logging import _ts_dir
+    arena_dir = BASE_DIR / "data" / "games" / _ts_dir()
+    arena_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"🎮 启动 {n} 个 Claude Code 实例...")
-    registry = {"players": {}, "config": {"total": n}}
+    print(f"🎮 启动 {n} 个 Claude Code 实例 (局: {arena_dir.name})...")
+    registry = {"players": {}, "config": {"total": n}, "arena": str(arena_dir)}
 
     for i in range(1, n + 1):
         name = f"{prefix}{i}"
         if session_exists(name):
             print(f"  ⚠️  {name} 已存在，跳过")
             continue
-        player_dir = players_base / f"player-{i}"
-        player_dir.mkdir(parents=True, exist_ok=True)
-        print(f"  [{i}/{n}] {name} → {player_dir.name}")
+        print(f"  [{i}/{n}] {name}")
         import subprocess
         subprocess.run(
-            ["tmux", "new-session", "-d", "-s", name, "-c", str(player_dir),
+            ["tmux", "new-session", "-d", "-s", name, "-c", str(arena_dir),
              f"{claude_cmd} player-{i}"],
             capture_output=True,
         )
@@ -65,7 +65,6 @@ def cmd_bootstrap(n: int = 8):
                 "task_uuid": uuid,
                 "alive": True,
                 "role": None,
-                "work_dir": str(players_base / f"player-{i}"),
             }
             print(f"  ✅ {name}: {uuid[:8]}")
         else:
