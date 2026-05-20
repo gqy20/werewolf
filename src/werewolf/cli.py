@@ -487,7 +487,7 @@ def cmd_run():
     winner_label = "🐺 狼人胜利" if winner and winner.name == "wolf" else "👼 好人阵营胜利"
     logger.log("game_end", result=winner_label)
     logger.save_state(game)
-    report_path = logger.write_report(game)
+    report_path = logger.write_report(game, result=winner_label)
     print(f"  📝 报告: {report_path}")
 
     for sess, pdata in sorted(players_raw.items()):

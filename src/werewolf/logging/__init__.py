@@ -14,7 +14,7 @@ class GameLogger:
     """按局隔离的日志系统"""
 
     def __init__(self, run_dir: Path | None = None):
-        self.run_dir = run_dir or (_BASE_DIR / "data" / "runs" / _ts())
+        self.run_dir = run_dir or (_BASE_DIR / "data" / "runs" / _ts_dir())
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.state_path = self.run_dir / "game_state.json"
         self.log_path = self.run_dir / "game_log.jsonl"
@@ -61,18 +61,19 @@ class GameLogger:
 
     # ── 结算报告 ────────────────────────────────────────────
 
-    def write_report(self, game) -> Path:
+    def write_report(self, game, result: str | None = None) -> Path:
         """游戏结束时生成 markdown 报告"""
-        report = self._build_report(game)
+        report = self._build_report(game, result)
         path = self.run_dir / "final_report.md"
         path.write_text(report)
         return path
 
-    def _build_report(self, game) -> str:
+    def _build_report(self, game, result: str | None = None) -> str:
+        label = result or self._winner_label(game)
         lines = [
             f"# 🐺🌙 狼人杀 #{self._state.get('run_id', '?')}",
             f"\n**时间**: {self._state.get('ts', '?')} ~ {_now_iso()}",
-            f"**结果**: {self._winner_label(game)}",
+            f"**结果**: {label}",
             "",
             "## 身份揭晓",
             "",
