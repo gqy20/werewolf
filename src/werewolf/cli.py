@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from werewolf.config import load_config, load_registry, save_registry
+from werewolf.dashboard import start_dashboard
 from werewolf.game import Game, GamePhase
 from werewolf.logging import GameLogger
 from werewolf.tmux import (
@@ -97,6 +98,10 @@ def cmd_run():
     game.setup(names, seed=42)
 
     logger = GameLogger()
+
+    # 启动 Dashboard
+    dash_server, dash_url = start_dashboard(logger)
+    print(f"\n  🖥️  Dashboard: {dash_url}")
 
     # 建立 session ↔ display_name 映射
     name_to_session: dict[str, str] = {}
