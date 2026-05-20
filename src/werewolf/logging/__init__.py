@@ -18,6 +18,7 @@ class GameLogger:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.state_path = self.run_dir / "game_state.json"
         self.log_path = self.run_dir / "game_log.jsonl"
+        self.speak_log_path = self.run_dir / "speak_log.md"
         self._log_file: list[dict] | None = []
         self._state: dict = {}
 
@@ -170,6 +171,88 @@ class GameLogger:
                     except json.JSONDecodeError:
                         pass
         return entries
+
+    # ── 发言记录 (speak_log.md) ─────────────────────
+
+    def init_speak_log(self, players: dict, config: dict):
+        """初始化发言记录文件，写入角色概览（身份隐藏）"""
+        roles_cfg = config.get("roles", {})
+        lines = [
+            "# 🐺 狼人杀 — 发言记录\n",
+            f"## 角色配置 ({len(players)}人)\n",
+            "| 玩家 | 身份 |",
+            "|------|------|",
+        ]
+        for name in sorted(players.keys()):
+            lines.append(f"| {name} | ??? |")
+
+        lines += ["\n---\n"]
+        self.speak_log_path.write_text("\n".join(lines), encoding="utf-8")
+
+    def _append_to_speak_log(self, text: str):
+        """追加文本到 speak_log.md"""
+        with open(self.speak_log_path, "a", encoding="utf-8") as f:
+            f.write(text + "\n")
+
+    def append_day_header(self, round_num: int):
+        """新的一天开始，写入白天标题"""
+        self._append_to_speak_log(f"\n## 第 {round_num} 天 — 白天\n")
+
+    def append_speak(self, round_num: int, player_name: str,
+                     role_display: str, msg: str):
+        """追加一条发言记录"""
+        ts = _now_iso()[11:16]
+        # 首次发言时创建表格头
+        if self.speak_log_path.exists():
+            content = self.speak_log_path.read_text(encoding="utf-8")
+            if "### 发言" not in content:
+                self._append_to_speak_log("### 发言\n| 时间 | 玩家 | 内容 |\n|------|------|------|")
+        self._append_to_speak_log(
+            f"| {ts} | {player_name}({role_display}) | {msg[:100]} |"
+        )
+
+    def append_vote_result(self, round_num: int, votes: dict,
+                            executed: str | None, game):
+        """追加投票结果"""
+        role_str = ""
+        if executed:
+            p = game.get_player(executed)
+            if p:
+                role_str = f" ({game.role_display(p.role)})"
+
+        lines = [
+            "\n### 投票\n",
+            "| 玩家 | 投给 |",
+            "|------|------|",
+        ]
+        for voter, target in votes.items():
+            t = target or "弃票"
+            lines.append(f"| {voter} → {t} |")
+        if executed:
+            lines.append(f"\n> 💀 处决: **{executed}{role_str}**")
+        else:
+            lines.append("\n> 📊 平票/弃票，平安度过。")
+        self._append_to_speak_log("\n".join(lines))
+
+    def append_night_summary(self, round_num: int, deaths: list,
+                              saved: bool, poisoned: str | None,
+                              guarded: str | None):
+        """追加夜晚结算摘要"""
+        parts = []
+        if deaths:
+            parts.append(f"☠️ 死亡: {', '.join(deaths)}")
+        else:
+            parts.append("🌅 平安夜")
+        if saved:
+            parts.append("🦨️ 救人成功")
+        if poisoned:
+            parts.append(f"☠️ 毒杀: {poisoned}")
+        if guarded:
+            parts.append(f"🛡️ 守卫守护: {guarded}")
+
+        self._append_to_speak_log(
+            f"\n## 第 {round_num} 天 — 夜晚\n> {' | '.join(parts)}\n"
+        )
 
 
 def _ts() -> str:

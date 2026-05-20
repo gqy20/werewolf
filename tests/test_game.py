@@ -233,3 +233,105 @@ qy113@qy113"""
         from werewolf.tmux import extract_number
         assert extract_number("我选择 3") == 3
         assert extract_number("没有数字") is None
+
+
+class TestSpeakLog:
+    """发言记录文件测试"""
+
+    @pytest.fixture
+    def logger(self, tmp_path):
+        from werewolf.logging import GameLogger
+        return GameLogger(run_dir=tmp_path)
+
+    def test_init_speak_log(self, logger, eight_player_game, sample_config):
+        """初始化应创建带角色表的 speak_log.md（身份隐藏）"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "发言记录" in content
+        assert "角色配置" in content
+        assert "8人" in content
+        for name in sorted(eight_player_game.players.keys()):
+            assert name in content
+        assert "???" in content
+        # 角色表中每行身份都应是 ???（标题中的"狼人杀"是游戏名，不算泄露）
+        for line in content.split("\n"):
+            if line.startswith("| p") and "???" not in line:
+                assert False, f"角色表行暴露了身份: {line}"
+
+    def test_append_day_header(self, logger, eight_player_game, sample_config):
+        """追加白天标题"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_day_header(1)
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "第 1 天 — 白天" in content
+
+    def test_append_speak(self, logger, eight_player_game, sample_config):
+        """追加发言记录"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_day_header(1)
+        logger.append_speak(1, "p1", "???", "我觉得 p3 很可疑")
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "p1" in content
+        assert "可疑" in content
+        assert "### 发言" in content
+
+    def test_append_multiple_speaks(self, logger, eight_player_game, sample_config):
+        """多次发言应累积"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_day_header(1)
+        logger.append_speak(1, "p1", "???", "我是好人")
+        logger.append_speak(1, "p2", "🔮 预言家", "p1 说得对")
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert content.count("|") >= 6
+
+    def test_append_vote_result_with_execution(self, logger, eight_player_game, sample_config):
+        """投票结果：有处决"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        votes = {"p1": "p3", "p2": "p3", "p3": "p1"}
+        logger.append_vote_result(1, votes, "p3", eight_player_game)
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "投票" in content
+        assert "处决" in content
+        assert "p3" in content
+
+    def test_append_vote_result_tie(self, logger, eight_player_game, sample_config):
+        """投票结果：平票"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        votes = {"p1": "p2", "p2": "p1"}
+        logger.append_vote_result(1, votes, None, eight_player_game)
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "平安度过" in content
+
+    def test_append_night_summary_deaths(self, logger, eight_player_game, sample_config):
+        """夜晚结算：有死亡"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_night_summary(1, ["p3"], False, None, "p1")
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "第 1 天 — 夜晚" in content
+        assert "死亡: p3" in content
+        assert "守卫守护: p1" in content
+
+    def test_append_night_summary_safe(self, logger, eight_player_game, sample_config):
+        """夜晚结算：平安夜"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_night_summary(1, [], False, None, None)
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "平安夜" in content
+
+    def test_full_round_flow(self, logger, eight_player_game, sample_config):
+        """完整一轮流程"""
+        logger.init_speak_log(eight_player_game.players, sample_config)
+        logger.append_day_header(1)
+        for i, name in enumerate(sorted(eight_player_game.players.keys())[:4]):
+            logger.append_speak(1, name, "???", f"玩家{name}的发言{i}")
+        votes = {n: "p3" for n in eight_player_game.players if n != "p3"}
+        logger.append_vote_result(1, votes, "p3", eight_player_game)
+        logger.append_night_summary(1, ["p4"], True, None, "p1")
+
+        content = logger.speak_log_path.read_text(encoding="utf-8")
+        assert "角色配置" in content
+        assert "第 1 天 — 白天" in content
+        assert "### 发言" in content
+        assert "### 投票" in content
+        assert "第 1 天 — 夜晚" in content
+        assert "救人成功" in content

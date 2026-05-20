@@ -148,6 +148,9 @@ def cmd_run():
     logger.log("role_assigned",
                roles={n: p.role for n, p in game.players.items()})
 
+    # 初始化发言记录文件
+    logger.init_speak_log(game.players, cfg)
+
     save_registry(registry)
     time.sleep(rules.get("speak_timeout_sec", 60))
 
@@ -193,6 +196,7 @@ def cmd_run():
         game.round_num = round_num
         logger.save_state(game)
         logger.log("day_start", round=round_num)
+        logger.append_day_header(round_num)
 
         import random as _rnd
         _rnd.shuffle(alive)
@@ -208,6 +212,7 @@ def cmd_run():
             others = [session_to_name[s] for s in alive if s != sess]
             tmux_send(sess,
                       f"\n🗣️ 轮到你 ({pname})\n"
+                      f"   请先读取 speak_log.md 了解当前局势\n"
                       f"   存活: {', '.join(others)}\n"
                       f"   发表看法（简短）:")
             time.sleep(speak_timeout)
@@ -216,11 +221,13 @@ def cmd_run():
             reply = extract_reply(out)
             target_others = [s for s in alive if s != sess]
             if reply:
+                logger.append_speak(round_num, pname, rdisp, reply)
                 for t in target_others:
-                    tmux_send(t, f"💬 {pname}({rdisp}): {reply}")
+                    tmux_send(t, f"💬 {pname}: 已发言 (详见 speak_log.md)")
                 print(f"  💬 {pname}: {reply[:60]}")
                 logger.log("speak", player=pname, msg=reply)
             else:
+                logger.append_speak(round_num, pname, rdisp, "（沉默）")
                 for t in target_others:
                     tmux_send(t, f"💬 {pname}: （沉默）")
 
@@ -254,6 +261,8 @@ def cmd_run():
         logger.log("vote_result",
                    executed=dead[0] if dead else None,
                    votes=dict(votes_raw))
+        logger.append_vote_result(round_num, dict(votes_raw),
+                                  dead[0] if dead else None, game)
         logger.save_state(game)
 
         if dead:
@@ -482,6 +491,12 @@ def cmd_run():
                        guarded=session_to_name.get(guarded_tonight) if guarded_tonight else None)
 
         logger.save_state(game)
+        logger.append_night_summary(
+            round_num, deaths,
+            wolf_saved,
+            session_to_name.get(poison_target) if poison_target else None,
+            session_to_name.get(guarded_tonight) if guarded_tonight else None,
+        )
 
         round_num += 1
 
