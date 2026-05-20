@@ -26,7 +26,8 @@ def cmd_bootstrap(n: int = 8):
     cfg = load_config()
     prefix = "ww-"
     claude_cmd = "claude --dangerously-skip-permissions --name"
-    project_dir = str(BASE_DIR.parent)
+    players_base = BASE_DIR / "data" / "players"
+    players_base.mkdir(parents=True, exist_ok=True)
 
     print(f"🎮 启动 {n} 个 Claude Code 实例...")
     registry = {"players": {}, "config": {"total": n}}
@@ -36,10 +37,12 @@ def cmd_bootstrap(n: int = 8):
         if session_exists(name):
             print(f"  ⚠️  {name} 已存在，跳过")
             continue
-        print(f"  [{i}/{n}] {name} ...")
+        player_dir = players_base / f"player-{i}"
+        player_dir.mkdir(parents=True, exist_ok=True)
+        print(f"  [{i}/{n}] {name} → {player_dir.name}")
         import subprocess
         subprocess.run(
-            ["tmux", "new-session", "-d", "-s", name, "-c", project_dir,
+            ["tmux", "new-session", "-d", "-s", name, "-c", str(player_dir),
              f"{claude_cmd} player-{i}"],
             capture_output=True,
         )
@@ -62,6 +65,7 @@ def cmd_bootstrap(n: int = 8):
                 "task_uuid": uuid,
                 "alive": True,
                 "role": None,
+                "work_dir": str(players_base / f"player-{i}"),
             }
             print(f"  ✅ {name}: {uuid[:8]}")
         else:
