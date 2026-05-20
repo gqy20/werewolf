@@ -25,6 +25,7 @@ def _make_handler(logger):
                 "/api/state": self._api_state,
                 "/api/log": self._api_log,
                 "/api/screens": self._api_screens,
+                "/api/speak-log": self._api_speak_log,
             }
             handler = routes.get(path)
             if handler:
@@ -102,6 +103,14 @@ def _make_handler(logger):
             if logger and hasattr(logger, "_screens"):
                 screens = dict(logger._screens)
             self._json(screens)
+
+        def _api_speak_log(self, _query):
+            logger = self._logger
+            if not logger or not logger.speak_log_path.exists():
+                self._json({"content": "", "exists": False})
+                return
+            content = logger.speak_log_path.read_text(encoding="utf-8")
+            self._json({"content": content, "exists": True})
 
         def log_message(self, format, *args):
             pass
