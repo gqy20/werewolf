@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WEREWOLF // COMMAND CENTER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-deep:#0a0e17;--bg-panel:rgba(12,20,35,.82);
+  --border-glow:rgba(0,248,255,.15);--border-active:rgba(0,248,255,.45);
+  --cyan:#00f8ff;--cyan-dim:rgba(0,248,255,.6);--red:#ff2d55;--amber:#ffb800;
+  --green:#32d74b;--text:#e0e6ed;--text-dim:rgba(224,230,237,.5);
+  --font-display:'Orbitron',sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --radius:6px;--glow:0 0 20px rgba(0,248,255,.08),inset 0 1px 0 rgba(255,255,255,.04)
+}
+html{font-size:14px;background:var(--bg-deep);color:var(--text)}
+body{font-family:var(--font-mono);min-height:100vh;overflow-x:hidden;
+  background:
+    radial-gradient(ellipse at 20% 50%,rgba(0,248,255,.03) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 20%,rgba(255,45,85,.02) 0%,transparent 50%),
+    var(--bg-deep)}
+
+/* ── starfield canvas ── */
+#stars{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+
+/* ── layout ── */
+.app{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:16px 20px}
+
+/* ── header ── */
+.header{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;margin-bottom:18px;border:1px solid var(--border-glow);
+  background:var(--bg-panel);backdrop-filter:blur(12px);border-radius:var(--radius);
+  box-shadow:var(--glow)}
+.header h1{font-family:var(--font-display);font-size:1.3rem;font-weight:900;
+  letter-spacing:.2em;color:var(--cyan);text-shadow:0 0 20px rgba(0,248,255,.3)}
+.header h1 span{color:var(--text-dim);font-weight:400;font-size:.7rem;letter-spacing:.15em}
+.status-bar{display:flex;gap:16px;align-items:center;font-size:.78rem}
+.status-item{display:flex;align-items:center;gap:6px;padding:4px 10px;
+  border:1px solid var(--border-glow);border-radius:99px;background:rgba(0,0,0,.3)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.phase-tag{font-family:var(--font-display);font-weight:700;font-size:.72rem;
+  color:var(--amber);letter-spacing:.08em}
+
+/* ── player grid ── */
+.players-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:10px;margin-bottom:18px}
+.player-card{position:relative;padding:14px;border:1px solid var(--border-glow);
+  background:var(--bg-panel);backdrop-filter:blur(10px);border-radius:var(--radius);
+  transition:border-color .3s,box-shadow .3s;overflow:hidden;
+  box-shadow:var(--glow)}
+.player-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan-dim),transparent);opacity:0;
+  transition:opacity .3s}
+.player-card:hover{border-color:var(--border-active);box-shadow:0 0 25px rgba(0,248,255,.1),var(--glow)}
+.player-card:hover::before{opacity:1}
+.player-card.dead{opacity:.48;border-color:rgba(255,45,85,.2)}
+.player-card.dead::before{background:linear-gradient(90deg,transparent,var(--red),transparent)}
+.player-name{font-family:var(--font-display);font-weight:700;font-size:.85rem;
+  margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.player-role{font-size:.72rem;color:var(--text-dim);margin-bottom:8px;
+  display:flex;align-items:center;gap:5px}
+.player-status{display:inline-flex;align-items:center;gap:4px;
+  font-size:.68rem;padding:2px 8px;border-radius:99px;font-weight:600;
+  letter-spacing:.04em}
+.player-status.alive{background:rgba(0,248,255,.1);color:var(--cyan);
+  border:1px solid rgba(0,248,255,.2)}
+.player-status.dead{background:rgba(255,45,85,.1);color:var(--red);
+  border:1px solid rgba(255,45,85,.2)}
+.player-screen{margin-top:8px;font-size:.65rem;color:var(--text-dim);
+  line-height:1.5;max-height:80px;overflow:hidden;
+  font-weight:300;white-space:pre-wrap;word-break:break-all}
+
+/* ── timeline ── */
+.timeline-section{border:1px solid var(--border-glow);background:var(--bg-panel);
+  backdrop-filter:blur(12px);border-radius:var(--radius);padding:16px 20px;
+  box-shadow:var(--glow)}
+.timeline-header{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px}
+.timeline-title{font-family:var(--font-display);font-weight:700;font-size:.8rem;
+  letter-spacing:.12em;color:var(--cyan-dim)}
+.timeline-count{font-size:.68rem;color:var(--text-dim)}
+.timeline{max-height:360px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--cyan-dim) transparent}
+.timeline::-webkit-scrollbar{width:4px}
+.timeline::-webkit-scrollbar-thumb{background:var(--cyan-dim);border-radius:2px}
+.log-entry{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.03);
+  display:flex;gap:10px;align-items:flex-start;font-size:.74rem;
+  animation:fadeSlideIn .3s ease-out}
+.log-entry:last-child{border-bottom:none}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.log-ts{flex-shrink:0;color:var(--text-dim);font-size:.64rem;
+  font-family:var(--font-mono);padding-top:1px}
+.log-body{flex:1;line-height:1.5}
+.log-event{font-weight:600;color:var(--cyan);margin-right:5px;text-transform:uppercase;
+  font-size:.66rem;letter-spacing:.06em}
+/* event-specific colors */
+.log-event[data-ev=speak]{color:var(--green)}
+.log-event[data-ev=vote]{color:var(--amber)}
+.log-event[data-ev=vote_result]{color:var(--red)}
+.log-event[data-ev=wolf_action]{color:var(--red)}
+.log-event[data-ev=night_resolve]{color:var(--amber)}
+.log-event[data-ev=game_end]{color:var(--cyan);font-size:.76rem}
+.log-detail{color:var(--text-dim)}
+
+/* ── empty state ── */
+.empty{text-align:center;padding:40px 0;color:var(--text-dim);font-size:.8rem}
+.empty-icon{font-size:2rem;margin-bottom:10px;opacity:.3}
+
+/* ── responsive ── */
+@media(max-width:768px){
+  .header{flex-direction:column;gap:10px;text-align:center}
+  .status-bar{flex-wrap:wrap;justify-content:center}
+  .players-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:480px){
+  .players-grid{grid-template-columns:1fr}
+  body{font-size:13px}
+}
+
+/* ── scanline overlay ── */
+.scanlines{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;
+  z-index:999;background:repeating-linear-gradient(
+    0deg,transparent,transparent 2px,rgba(0,0,0,.015) 2px,rgba(0,0,0,.015) 4px
+  );opacity:.4}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div class="scanlines"></div>
+
+<div class="app">
+  <header class="header">
+    <h1>WEREWOLF <span>// COMMAND CENTER</span></h1>
+    <div class="status-bar">
+      <div class="status-item"><div class="status-dot"></div><span id="round-info">DAY 0</span></div>
+      <div class="phase-tag" id="phase-info">INIT</div>
+      <div class="status-item" id="alive-count">ALIVE: 0/0</div>
+    </div>
+  </header>
+
+  <section class="players-grid" id="players-grid"></section>
+
+  <section class="timeline-section">
+    <div class="timeline-header">
+      <span class="timeline-title">EVENT LOG</span>
+      <span class="timeline-count" id="log-count">0 events</span>
+    </div>
+    <div class="timeline" id="timeline">
+      <div class="empty"><div class="empty-icon">&#9889;</div>Waiting for game data...</div>
+    </div>
+  </section>
+</div>
+
+<script>
+const ROLE_ICONS = {
+  werewolf:'\u{1F43A}',villager:'\u{1F9D1}‍♂️',
+  seer:'\u{1F52E}',witch:'\u{1F9A8}',hunter:'\u{1F42B}',guard:'\u{1F6E1}'
+};
+const ROLE_NAMES = {
+  werewolf:'WOLF',villager:'VILLAGER',seer:'SEER',
+  witch:'WITCH',hunter:'HUNTER',guard:'GUARD'
+};
+const EVENT_LABELS = {
+  role_assigned:'ROLE',speak:'SPEAK',vote:'VOTE',
+  vote_result:'VERDICT',wolf_action:'HUNT',seer_check:'SCAN',
+  guard_action:'SHIELD',witch_action:'POTION',
+  night_resolve:'NIGHT',hunter_shoot:'SHOOT',game_end:'OVER',
+  day_start:'DAWN',night_start:'DUSK'
+};
+
+let lastLogTs = '';
+const POLL_MS = 2500;
+
+function $(id){return document.getElementById(id)}
+
+// ── starfield ──
+(function initStars(){
+  const c=$('stars'),ctx=c.getContext('2d');
+  let stars=[],W,H;
+  function resize(){W=c.width=innerWidth;H=c.height=innerHeight;stars=[];for(let i=0;i<120;i++)
+    stars.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+.2,
+      a:Math.random()*.6+(.1+(i>90?.4:0)),s:Math.random()*.3+.05})}
+  function draw(){ctx.clearRect(0,0,W,H);for(const s of stars){
+    ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(220,235,255,${s.a})`;ctx.fill();
+    s.y+=s.s;if(s.y>H)s.y=0;s.a+=(Math.random()-.5)*.02;
+    s.a=Math.max(.05,Math.min(.9,s.a))}
+  requestAnimationFrame(function loop(){draw();requestAnimationFrame(loop)})
+  resize();addEventListener('resize',resize);
+})();
+
+// ── API helpers ──
+async function api(path){try{const r=await fetch(path);return await r.json()}catch(e){return null}}
+
+// ── render players ──
+function renderPlayers(state){
+  if(!state||!state.roles)return;
+  const grid=$('players-grid');grid.innerHTML='';
+  const roles=state.roles||{};
+  const alive=state.alive||[];
+  for(const[name,info]of Object.entries(roles)){
+    const isAlive=alive.includes(name);
+    const card=document.createElement('div');
+    card.className='player-card'+(isAlive?'':' dead');
+    const icon=ROLE_ICONS[info.role]||'\u{1F464}';
+    const roleName=ROLE_NAMES[info.role]||info.role.toUpperCase();
+    card.innerHTML=`
+      <div class="player-name">${name}</div>
+      <div class="player-role">${icon} ${roleName}</div>
+      <div class="player-status ${isAlive?'alive':'dead'}">${isAlive?'✅ ALIVE':'\u{1F480} ELIMINATED'}</div>`;
+    grid.appendChild(card);
+  }
+}
+
+// ── render timeline ──
+function renderTimeline(entries){
+  const tl=$('timeline');
+  if(!entries||!entries.length){tl.innerHTML='<div class="empty"><div class="empty-icon">&#9889;</div>No events yet.</div>';return}
+  tl.innerHTML='';
+  entries.slice().reverse().forEach(e=>{
+    const row=document.createElement('div');row.className='log-entry';
+    const ts=(e.ts||'').substring(11,16)||'--:--';
+    const ev=e.event||'?';
+    const label=EVENT_LABELS[ev]||ev.toUpperCase();
+    let detail='';
+    if(ev==='speak')detail=`<strong>${e.player||'?'}</strong>: ${e.msg||''}`;
+    else if(ev==='vote')detail=`${e.voter||'?'} → ${e.target||'-'}`;
+    else if(ev==='vote_result')detail=e.executed?`\u{1F480} <strong>${e.executed}</strong> executed`:'No execution';
+    else if(ev==='wolf_action')detail=`Target: <strong>${e.target||'?'}</strong>`;
+    else if(ev==='seer_check')detail=`${e.player||'?'} checks <strong>${e.target||'?'}</strong> → ${e.result||'?'}`;
+    else if(ev==='witch_action')detail=e.action?`Used <strong>${e.action}</strong>${e.target?` on ${e.target}`:''}`:'—';
+    else if(ev==='guard_action')detail=e.target?`Guarding <strong>${e.target}</strong>`:`No guard`;
+    else if(ev==='night_resolve'){
+      const parts=[];
+      if(e.deaths&&e.deaths.length)parts.push(`\u{1F480} ${e.deaths.join(', ')}`);
+      if(e.saved)parts.push('\u{1F9A8} Saved');
+      if(e.poisoned)parts.push(`☠ Poisoned ${e.poisoned}`);
+      if(e.guarded)parts.push(`\u{1F6E1} Guarded ${e.guarded}`);
+      detail=parts.length?parts.join(' | '):'\u{1F304} Safe night';
+    }else if(ev==='hunter_shoot')detail=`${e.hunter||'?'} shoots <strong>${e.target||'?'}</strong>`;
+    else if(ev==='game_end')detail=`<strong style="color:var(--cyan)">${e.result||''}</strong>`;
+    else if(ev==='role_assigned'){const r=e.roles||{};detail=Object.entries(r).map(([n,ro])=>`${n}: ${ro}`).join(', ')}
+    else detail=Object.entries(e).filter(([k])=>!['event','ts','round','phase'].includes(k)).map(([k,v])=>`${k}=${v}`).join(' ');
+    row.innerHTML=`<span class="log-ts">${ts}</span><span class="log-body"><span class="log-event" data-ev="${ev}">${label}</span> <span class="log-detail">${detail}</span></span>`;
+    tl.appendChild(row);
+  });
+}
+
+// ── update header ──
+function updateHeader(state){
+  if(!state)return;
+  $('round-info').textContent=`DAY ${state.round||'?'}`;
+  const ph=(state.phase||'?').toUpperCase();
+  $('phase-info').textContent=ph;
+  $('phase-info').style.color=ph.includes('NIGHT')?'var(--amber)':ph.includes('DAY')?'var(--green)':'var(--cyan)';
+  const aliveCount=(state.alive||[]).length,total=Object.keys(state.roles||{}).length;
+  $('alive-count').textContent=`ALIVE: ${aliveCount}/${total}`;
+}
+
+// ── poll loop ──
+async function poll(){
+  const [state,logs]=await Promise.all([api('/api/state'),api('/api/log?since='+encodeURIComponent(lastLogTs))]);
+  if(state){updateHeader(state);renderPlayers(state)}
+  if(logs&&logs.length){
+    renderTimeline(logs);
+    if(logs.length)lastLogTs=logs[logs.length-1].ts||lastLogTs;
+  }
+  $('log-count').textContent=document.querySelectorAll('.log-entry').length+' events';
+  setTimeout(poll,POLL_MS);
+}
+
+// ── boot ──
+poll();
+</script>
+</body>
+</html>
