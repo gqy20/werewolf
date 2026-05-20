@@ -287,6 +287,10 @@ def extract_reply_from_jsonl(jsonl_path: Path,
                         continue
                     if text.startswith(_NOISE_TEXT_PREFIXES):
                         continue
+                    # 过滤包含 bootstrap 探测/计时器等残留噪音
+                    if any(n in text for n in ("__probe_", "Cogitated", "Worked for",
+                                           "Churned", "Sautéed", "Bypassed")):
+                        continue
                     # 取最后一条有效文本（最新的）
                     best_text = text
     except (json.JSONDecodeError, OSError):
