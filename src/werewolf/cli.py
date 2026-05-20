@@ -6,6 +6,7 @@ from pathlib import Path
 
 from werewolf.config import load_config, load_registry, save_registry
 from werewolf.game import Game, GamePhase
+from werewolf.logging import GameLogger
 from werewolf.tmux import (
     discover_task_uuid,
     extract_number,
@@ -92,6 +93,8 @@ def cmd_run():
     # 用固定 seed 保证可复现（实际中可用 random）
     game.setup(names, seed=42)
 
+    logger = GameLogger()
+
     # 建立 session ↔ display_name 映射
     name_to_session: dict[str, str] = {}
     session_to_name: dict[str, str] = {}
@@ -133,6 +136,10 @@ def cmd_run():
         tmux_send(sess, card)
         print(f"  {dname}: {role_disp}")
 
+    logger.save_state(game)
+    logger.log("role_assigned",
+               roles={n: p.role for n, p in game.players.items()})
+
     save_registry(registry)
     time.sleep(rules.get("speak_timeout_sec", 60))
 
@@ -156,9 +163,13 @@ def cmd_run():
         if winner:
             team_str = "🐺 狼人" if winner.name == "wolf" else "👼 好人"
             _broadcast(alive, f"\n🎉 {team_str}阵营胜利！")
+            logger.log("game_end", result=f"{team_str}阵营胜利")
+            logger.save_state(game)
             break
         if len(alive) <= 2:
             _broadcast(alive, "\n⚖️ 游戏结束，存活不足。")
+            logger.log("game_end", result="存活不足，游戏结束")
+            logger.save_state(game)
             break
 
         # ── 白天 ──
@@ -167,6 +178,9 @@ def cmd_run():
         print(f"{'━'*50}")
 
         _broadcast(alive, f"\n{'='*45}\n☀️ 第 {round_num} 天 — 天亮了\n{'='*45}")
+
+        logger.save_state(game)
+        logger.log("day_start", round=round_num)
 
         import random as _rnd
         _rnd.shuffle(alive)
@@ -193,6 +207,7 @@ def cmd_run():
                 for t in target_others:
                     tmux_send(t, f"💬 {pname}({rdisp}): {reply}")
                 print(f"  💬 {pname}: {reply[:60]}")
+                logger.log("speak", player=pname, msg=reply)
             else:
                 for t in target_others:
                     tmux_send(t, f"💬 {pname}: （沉默）")
@@ -214,11 +229,18 @@ def cmd_run():
             votes_raw[pname] = pick
             if pick:
                 print(f"    {pname} → {pick}")
+                logger.log("vote", voter=pname, target=pick)
             else:
                 print(f"    {pname} → 弃票")
+                logger.log("vote", voter=pname, target=None)
 
         result = game.count_votes(votes_raw)
         dead = game.execute_vote(result)
+
+        logger.log("vote_result",
+                   executed=dead[0] if dead else None,
+                   votes=dict(votes_raw))
+        logger.save_state(game)
 
         if dead:
             dname = dead[0] if dead else None
@@ -246,6 +268,7 @@ def cmd_run():
                                 hr = game.get_player(hpick).role if game.get_player(hpick) else "?"
                                 _broadcast(alive,
                                     f"🔫 猎人带走了 {hpick}({game.role_display(hr)})!")
+                                logger.log("hunter_shoot", hunter=dname, target=hpick)
         else:
             _broadcast(alive, "\n📊 平票/弃票，平安度过。")
 
@@ -262,6 +285,9 @@ def cmd_run():
         print(f"{'━'*50}")
 
         _broadcast(alive, f"\n{'='*45}\n🌙 夜幕降临，请闭眼\n{'='*45}")
+
+        logger.save_state(game)
+        logger.log("night_start", round=round_num)
 
         night_timeout = rules.get("night_action_timeout_sec", 40)
         witch_save_used = registry.get("witch_save_used", False)
@@ -314,6 +340,7 @@ def cmd_run():
                 if pick:
                     wolf_target_name = pick
                     print(f"  🐺 → {pick}")
+                    logger.log("wolf_action", target=pick)
                     break
 
         # 收集守卫结果
@@ -325,6 +352,9 @@ def cmd_run():
                 if gsess:
                     guarded_tonight = gsess
                     print(f"  🛡️ 守 {pick}")
+                    logger.log("guard_action", target=pick)
+            else:
+                logger.log("guard_action", target=None)
 
         # 收集预言家结果 & 私发查验反馈
         for seer in seers:
@@ -338,6 +368,8 @@ def cmd_run():
                     result_str = "🐺 狼人！" if tteam.name == "wolf" else "👼 好人"
                     tmux_send(seer, f"🔮 {pick} → {result_str}")
                     print(f"  🔮 {pick} → {result_str}")
+                    logger.log("seer_check", player=session_to_name[seer],
+                               target=pick, result=result_str)
 
         # ═══ 第二波：女巫（依赖狼人刀人结果）════
 
@@ -373,6 +405,7 @@ def cmd_run():
                     witch_save_used = True
                     wolf_saved = True
                     print(f"  🦨️ 救人")
+                    logger.log("witch_action", action="save")
                 elif act == "毒人":
                     witch_poison_used = True
                     poisons = [s for s in alive if s != witch]
@@ -388,6 +421,8 @@ def cmd_run():
                         if psess:
                             poison_target = psess
                             print(f"  ☠️ 毒 {ppick}")
+                            logger.log("witch_action", action="poison",
+                                       target=ppick)
 
         # 结算夜晚
         wolf_sess = name_to_session.get(wolf_target_name) if wolf_target_name else None
@@ -420,8 +455,18 @@ def cmd_run():
                     tmux_send(dsess, "你已死亡，留遗言:")
                     time.sleep(20)
             _broadcast(alive, f"\n☠️ 昨晚死亡: {', '.join(dinfo)}")
+            logger.log("night_resolve", deaths=dinfo,
+                       saved=wolf_saved,
+                       poisoned=session_to_name.get(poison_target) if poison_target else None,
+                       guarded=session_to_name.get(guarded_tonight) if guarded_tonight else None)
         else:
             _broadcast(alive, "\n🌅 平安夜。")
+            logger.log("night_resolve", deaths=[],
+                       saved=wolf_saved,
+                       poisoned=None,
+                       guarded=session_to_name.get(guarded_tonight) if guarded_tonight else None)
+
+        logger.save_state(game)
 
         round_num += 1
 
@@ -429,6 +474,14 @@ def cmd_run():
     print(f"\n{'='*50}")
     print("🏁 游戏结束！")
     print(f"{'='*50}")
+
+    winner = game.check_winner()
+    winner_label = "🐺 狼人胜利" if winner and winner.name == "wolf" else "👼 好人阵营胜利"
+    logger.log("game_end", result=winner_label)
+    logger.save_state(game)
+    report_path = logger.write_report(game)
+    print(f"  📝 报告: {report_path}")
+
     for sess, pdata in sorted(players_raw.items()):
         role = pdata.get("role", "?")
         status = "✅" if pdata.get("alive") else "💀"
