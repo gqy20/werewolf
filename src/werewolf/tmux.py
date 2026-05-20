@@ -1,10 +1,13 @@
 """tmux 操作封装 + 消息解析"""
+import glob
+import json
 import re
 import subprocess
 import time
 from pathlib import Path
 
 TASKS_DIR = Path.home() / ".claude" / "tasks"
+CLAUDE_DIR = Path.home() / ".claude"
 
 
 # ── tmux 基本操作 ──────────────────────────────────────
@@ -197,3 +200,106 @@ def extract_vote(output: str, candidates: list[str]) -> str | None:
 def extract_number(output: str) -> int | None:
     m = re.search(r'\b([1-9])\b', output)
     return int(m.group(1)) if m else None
+
+
+# ── jsonl 日志提取（替代 tmux capture）────────────────
+
+_NOISE_TEXT_PREFIXES = (
+    "__probe_", "TaskCreate", "Cogitated for", "Worked for",
+    "Churned for", "Sautéed for", "Bypassed for",
+)
+
+# 缓存: session_name → jsonl Path，避免重复扫描
+_jsonl_cache: dict[str, Path] = {}
+
+
+def _find_projects_dir() -> Path | None:
+    """找到当前 werewolf 项目对应的 Claude projects 目录"""
+    # 通过 registry 或 arena 目录名匹配
+    candidates = sorted(
+        CLAUDE_DIR.glob("projects/*2605*werewolf*"),
+        key=lambda p: p.stat().st_mtime if p.is_dir() else 0,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+def find_jsonl_path(session_name: str, agent_name: str | None = None) -> Path | None:
+    """根据 tmux session 名或 agent name 找到对应的 jsonl 文件路径"""
+    if session_name in _jsonl_cache:
+        p = _jsonl_cache[session_name]
+        return p if p.exists() else None
+
+    proj_dir = _find_projects_dir()
+    if not proj_dir:
+        return None
+
+    target = agent_name or session_name
+    for jf in glob.glob(str(proj_dir / "*.jsonl")):
+        try:
+            with open(jf, encoding="utf-8") as f:
+                for line in f:
+                    d = json.loads(line)
+                    if d.get("type") == "agent-name" and d.get("agentName") == target:
+                        p = Path(jf)
+                        _jsonl_cache[session_name] = p
+                        return p
+        except (json.JSONDecodeError, OSError):
+            continue
+    return None
+
+
+def extract_reply_from_jsonl(jsonl_path: Path,
+                             since_ts: str | None = None) -> str:
+    """从 jsonl 日志中提取玩家最后一条有意义的回复文本
+
+    Args:
+        jsonl_path: 玩家的对话日志文件路径
+        since_ts: 只读取此时间戳之后的消息（用于获取新回复）
+    Returns:
+        最后一条有效的 assistant text 内容，空字符串表示无有效回复
+    """
+    if not jsonl_path or not jsonl_path.exists():
+        return ""
+
+    best_text = ""
+    try:
+        with open(jsonl_path, encoding="utf-8") as f:
+            for line in f:
+                d = json.loads(line)
+                # 只看 assistant 消息
+                if d.get("type") != "assistant":
+                    continue
+                # 时间过滤：只取 since_ts 之后的消息
+                ts = d.get("timestamp", "")
+                if since_ts and ts <= since_ts:
+                    continue
+                # 提取 text block
+                content = d.get("message", {}).get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict) or block.get("type") != "text":
+                        continue
+                    text = block.get("text", "")
+                    # 过滤噪音和过短内容
+                    if len(text) <= 10:
+                        continue
+                    if text.startswith(_NOISE_TEXT_PREFIXES):
+                        continue
+                    # 取最后一条有效文本（最新的）
+                    best_text = text
+    except (json.JSONDecodeError, OSError):
+        pass
+    return best_text
+
+
+def build_jsonl_map(registry: dict) -> dict[str, Path]:
+    """批量构建 session_name → jsonl_path 映射表"""
+    result = {}
+    for sess, pdata in registry.get("players", {}).items():
+        aname = pdata.get("display_name")
+        jpath = find_jsonl_path(sess, aname)
+        if jpath:
+            result[sess] = jpath
+    return result

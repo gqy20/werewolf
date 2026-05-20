@@ -9,14 +9,16 @@ from werewolf.dashboard import start_dashboard
 from werewolf.game import Game, GamePhase
 from werewolf.logging import GameLogger
 from werewolf.tmux import (
+    build_jsonl_map,
     discover_task_uuid,
     extract_number,
     extract_reply,
+    extract_reply_from_jsonl,
     extract_vote,
+    find_jsonl_path,
     kill_session,
     list_sessions,
     session_exists,
-    tmux_capture,
     tmux_send,
 )
 
@@ -110,7 +112,14 @@ def cmd_run():
         dname = pdata["display_name"]
         name_to_session[dname] = sess
         session_to_name[sess] = dname
-        # 同步角色到 registry
+
+    # 构建 session → jsonl 路径映射（用于从日志提取回复）
+    jsonl_map = build_jsonl_map(registry)
+    print(f"  📂 jsonl 映射: {len(jsonl_map)}/{len(players_raw)}")
+
+    # 同步角色到 registry
+    for sess, pdata in players_raw.items():
+        dname = pdata["display_name"]
         player = game.get_player(dname)
         if player:
             pdata["role"] = player.role
@@ -217,14 +226,21 @@ def cmd_run():
                       f"   发表看法（简短）:")
             time.sleep(speak_timeout)
 
-            out = tmux_capture(sess, 15)
-            reply = extract_reply(out)
+            # 从 jsonl 日志提取真实回复（替代 tmux capture + 噪音过滤）
+            jpath = jsonl_map.get(sess)
+            if jpath:
+                reply = extract_reply_from_jsonl(jpath)
+            else:
+                # fallback: 尝试通过 session name 查找
+                jpath = find_jsonl_path(sess, pname)
+                reply = extract_reply_from_jsonl(jpath) if jpath else ""
+
             target_others = [s for s in alive if s != sess]
             if reply:
                 logger.append_speak(round_num, pname, rdisp, reply)
                 for t in target_others:
                     tmux_send(t, f"💬 {pname}: 已发言 (详见 speak_log.md)")
-                print(f"  💬 {pname}: {reply[:60]}")
+                print(f"  💬 {pname}: {reply[:80]}")
                 logger.log("speak", player=pname, msg=reply)
             else:
                 logger.append_speak(round_num, pname, rdisp, "（沉默）")
@@ -245,8 +261,14 @@ def cmd_run():
         candidates = [session_to_name[s] for s in alive]
         for sess in alive:
             pname = session_to_name[sess]
-            out = tmux_capture(sess, 10)
-            pick = extract_vote(out, candidates)
+            # 从 jsonl 提取投票回复
+            jpath = jsonl_map.get(sess) or find_jsonl_path(sess, pname)
+            if jpath:
+                vote_text = extract_reply_from_jsonl(jpath)
+                pick = extract_vote(vote_text, candidates)
+            else:
+                out = tmux_capture(sess, 10)
+                pick = extract_vote(out, candidates)
             votes_raw[pname] = pick
             if pick:
                 print(f"    {pname} → {pick}")
