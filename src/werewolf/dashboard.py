@@ -77,6 +77,20 @@ def _make_handler(logger):
                 self._json([], 200)
                 return
             entries = logger._read_log()
+            offset_raw = query.get("offset", [None])[0]
+            if offset_raw is not None:
+                try:
+                    offset = max(0, int(offset_raw))
+                except ValueError:
+                    self._json({"error": "offset must be an integer"}, 400)
+                    return
+                self._json({
+                    "offset": offset,
+                    "next_offset": len(entries),
+                    "entries": entries[offset:],
+                    "total": len(entries),
+                })
+                return
             since = query.get("since", [None])[0]
             if since:
                 entries = [e for e in entries if e.get("ts", "") > since]

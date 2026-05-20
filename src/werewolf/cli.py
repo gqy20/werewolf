@@ -172,11 +172,13 @@ def cmd_run():
             team_str = "🐺 狼人" if winner.name == "wolf" else "👼 好人"
             _broadcast(alive, f"\n🎉 {team_str}阵营胜利！")
             logger.log("game_end", result=f"{team_str}阵营胜利")
+            game.phase = GamePhase.ENDED
             logger.save_state(game)
             break
         if len(alive) <= 2:
             _broadcast(alive, "\n⚖️ 游戏结束，存活不足。")
             logger.log("game_end", result="存活不足，游戏结束")
+            game.phase = GamePhase.ENDED
             logger.save_state(game)
             break
 
@@ -187,6 +189,8 @@ def cmd_run():
 
         _broadcast(alive, f"\n{'='*45}\n☀️ 第 {round_num} 天 — 天亮了\n{'='*45}")
 
+        game.phase = GamePhase.DAY_SPEAK
+        game.round_num = round_num
         logger.save_state(game)
         logger.log("day_start", round=round_num)
 
@@ -222,6 +226,8 @@ def cmd_run():
 
         # 投票（并行：同时发 → 统一等 → 批量收）
         print(f"  🗳️ 投票...")
+        game.phase = GamePhase.DAY_VOTE
+        logger.save_state(game)
         options = [(i+1, session_to_name[s]) for i, s in enumerate(alive)]
         opts_str = "\n".join(f"   {i}. {n}" for i, n in options)
 
@@ -294,6 +300,7 @@ def cmd_run():
 
         _broadcast(alive, f"\n{'='*45}\n🌙 夜幕降临，请闭眼\n{'='*45}")
 
+        game.phase = GamePhase.NIGHT
         logger.save_state(game)
         logger.log("night_start", round=round_num)
 
@@ -486,6 +493,7 @@ def cmd_run():
     winner = game.check_winner()
     winner_label = "🐺 狼人胜利" if winner and winner.name == "wolf" else "👼 好人阵营胜利"
     logger.log("game_end", result=winner_label)
+    game.phase = GamePhase.ENDED
     logger.save_state(game)
     report_path = logger.write_report(game, result=winner_label)
     print(f"  📝 报告: {report_path}")

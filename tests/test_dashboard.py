@@ -107,6 +107,20 @@ class TestLogAPI:
             _, all_again = _get(f"{dashboard_server}/api/log?since={quote(past_ts)}")
             assert len(all_again) == len(all_entries)
 
+    def test_offset_parameter_returns_cursor_page(self, dashboard_server):
+        _, all_entries = _get(f"{dashboard_server}/api/log")
+        status, page = _get(f"{dashboard_server}/api/log?offset=2")
+        assert status == 200
+        assert page["offset"] == 2
+        assert page["next_offset"] == len(all_entries)
+        assert page["total"] == len(all_entries)
+        assert page["entries"] == all_entries[2:]
+
+    def test_invalid_offset_returns_400(self, dashboard_server):
+        status, data = _get(f"{dashboard_server}/api/log?offset=bad")
+        assert status == 400
+        assert data["error"] == "offset must be an integer"
+
     def test_speak_event_content(self, dashboard_server):
         _, entries = _get(f"{dashboard_server}/api/log")
         speak_events = [e for e in entries if e["event"] == "speak"]

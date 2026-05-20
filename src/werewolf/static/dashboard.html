@@ -7,173 +7,288 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d1117;--surface:#161b22;--border:#30363d;
-  --cyan:#58a6ff;--red:#f85149;--amber:#d29922;--green:#3fb950;
-  --text:#c9d1d9;--text-dim:#8b949e;
-  --radius:6px
+  --bg:#0f1318;--surface:#171d24;--surface-2:#1e2630;--border:#33404d;
+  --blue:#6aa7ff;--red:#ff6b61;--amber:#e1b653;--green:#62c978;
+  --text:#d8dee6;--text-dim:#99a3ad;--radius:6px
 }
 html{font-size:14px;background:var(--bg);color:var(--text)}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
   min-height:100vh;line-height:1.5}
-
-.app{max-width:1200px;margin:0 auto;padding:16px}
-
-/* header */
-.header{display:flex;align-items:center;justify-content:space-between;
-  padding:12px 16px;margin-bottom:16px;border-bottom:2px solid var(--border)}
-.header h1{font-size:1.1rem;font-weight:700;color:var(--text)}
-.header h1 span{color:var(--text-dim);font-weight:400;font-size:.85rem}
-.badge{display:inline-block;padding:2px 10px;border-radius:99px;
-  font-size:.75rem;font-weight:600;letter-spacing:.04em}
-.badge-day{background:rgba(63,185,80,.15);color:var(--green)}
-.badge-night{background:rgba(210,153,34,.15);color:var(--amber)}
-.badge-setup{background:rgba(139,148,158,.15);color:var(--text-dim)}
-.stat{font-size:.78rem;color:var(--text-dim)}
-
-/* players */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
-  gap:8px;margin-bottom:16px}
-.card{padding:12px;border:1px solid var(--border);border-radius:var(--radius);
-  background:var(--surface);transition:border-color .15s}
+.app{max-width:1280px;margin:0 auto;padding:16px}
+.header{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:12px 0 16px;margin-bottom:14px;border-bottom:1px solid var(--border)}
+.title h1{font-size:1.15rem;font-weight:700}
+.title p{color:var(--text-dim);font-size:.78rem}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 10px;border-radius:999px;
+  font-size:.75rem;font-weight:700;letter-spacing:.03em}
+.badge-day{background:rgba(98,201,120,.14);color:var(--green)}
+.badge-night{background:rgba(225,182,83,.14);color:var(--amber)}
+.badge-setup{background:rgba(153,163,173,.14);color:var(--text-dim)}
+.badge-error{background:rgba(255,107,97,.14);color:var(--red)}
+.stat{font-size:.78rem;color:var(--text-dim);white-space:nowrap}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(98,201,120,.12)}
+.status-dot.off{background:var(--red);box-shadow:0 0 0 3px rgba(255,107,97,.12)}
+.overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.metric{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:10px 12px}
+.metric span{display:block;color:var(--text-dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
+.metric strong{display:block;margin-top:2px;font-size:1.05rem}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:12px;align-items:start}
+.panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem}
+.count{font-size:.72rem;color:var(--text-dim);font-weight:500}
+.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding:10px}
+.card{min-width:0;padding:10px;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface-2);transition:border-color .15s,opacity .15s}
 .card:hover{border-color:var(--text-dim)}
-.card.dead{opacity:.5}
-.name{font-weight:600;font-size:.85rem;margin-bottom:4px}
-.role{font-size:.72rem;color:var(--text-dim);margin-bottom:6px}
-.tag{display:inline-block;font-size:.65rem;padding:1px 8px;border-radius:99px;font-weight:600}
-.tag-alive{color:var(--green);background:rgba(63,185,80,.12)}
-.tag-dead{color:var(--red);background:rgba(248,81,73,.12)}
-
-/* timeline */
-.timeline{border:1px solid var(--border);border-radius:var(--radius);
-  background:var(--surface);max-height:500px;overflow-y:auto}
-.tl-head{display:flex;justify-content:space-between;align-items:center;
-  padding:10px 14px;border-bottom:1px solid var(--border);font-weight:600;font-size:.82rem}
-.tl-count{font-size:.7rem;color:var(--text-dim);font-weight:400}
-.entry{padding:8px 14px;border-bottom:1px solid var(--border);font-size:.76rem;display:flex;gap:8px}
+.card.dead{opacity:.54}
+.name{font-weight:700;font-size:.86rem;overflow-wrap:anywhere}
+.role{font-size:.73rem;color:var(--text-dim);margin-top:2px;overflow-wrap:anywhere}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.tag{display:inline-flex;align-items:center;min-height:18px;font-size:.66rem;padding:1px 7px;border-radius:999px;font-weight:700}
+.tag-alive{color:var(--green);background:rgba(98,201,120,.12)}
+.tag-dead{color:var(--red);background:rgba(255,107,97,.12)}
+.tag-wolf{color:var(--red);background:rgba(255,107,97,.10)}
+.tag-good{color:var(--blue);background:rgba(106,167,255,.10)}
+.timeline{max-height:620px;overflow:auto}
+.entry{display:grid;grid-template-columns:42px 72px minmax(0,1fr);gap:8px;
+  padding:8px 12px;border-bottom:1px solid var(--border);font-size:.76rem}
 .entry:last-child{border-bottom:none}
-.ts{flex-shrink:0;color:var(--text-dim);font-size:.68rem;font-family:monospace}
-.ev{font-weight:600;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;
-  min-width:52px}
-.ev-speak{color:var(--green)}.ev-vote{color:var(--amber)}
-.ev-verdict{color:var(--red)}.ev-night{color:var(--amber)}
-.ev-over{color:var(--cyan)}.ev-role{color:var(--cyan)}
-.detail{color:var(--text)}
-
-.empty{text-align:center;padding:40px 0;color:var(--text-dim)}
-
+.ts{color:var(--text-dim);font-size:.68rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.ev{font-weight:800;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em}
+.ev-speak{color:var(--green)}.ev-vote{color:var(--amber)}.ev-verdict{color:var(--red)}
+.ev-night{color:var(--amber)}.ev-over{color:var(--blue)}.ev-role{color:var(--blue)}
+.detail{min-width:0;color:var(--text);overflow-wrap:anywhere}
+.detail b{font-weight:800}
+.screens{display:grid;gap:8px;padding:10px;max-height:360px;overflow:auto}
+.screen{border:1px solid var(--border);border-radius:var(--radius);background:#0b0f14;overflow:hidden}
+.screen h3{padding:7px 9px;border-bottom:1px solid var(--border);font-size:.76rem}
+.screen pre{padding:9px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#b7c0ca;
+  font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.empty{padding:36px 12px;text-align:center;color:var(--text-dim);font-size:.82rem}
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media(max-width:600px){
-  .grid{grid-template-columns:repeat(2,1fr)}
-  .header{flex-direction:column;gap:8px;text-align:center}
+  .app{padding:12px}
+  .header{align-items:flex-start;flex-direction:column}
+  .meta{justify-content:flex-start}
+  .players{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .entry{grid-template-columns:38px 60px minmax(0,1fr);gap:6px;padding:8px 10px}
 }
 </style>
 </head>
 <body>
-
 <div class="app">
   <header class="header">
-    <h1>Werewolf <span>// Game Monitor</span></h1>
-    <div style="display:flex;gap:12px;align-items:center">
+    <div class="title">
+      <h1>Werewolf Dashboard</h1>
+      <p id="run-id">等待游戏数据</p>
+    </div>
+    <div class="meta">
+      <span class="status-dot" id="status-dot"></span>
       <span class="badge badge-setup" id="phase-badge">INIT</span>
-      <span class="stat" id="round-info">Round -</span>
-      <span class="stat" id="alive-info">0/0</span>
+      <span class="stat" id="round-info">Day -</span>
+      <span class="stat" id="updated-info">--:--</span>
     </div>
   </header>
 
-  <section class="grid" id="players"></section>
-
-  <section class="timeline">
-    <div class="tl-head"><span>Event Log</span><span class="tl-count" id="log-count">0</span></div>
-    <div id="log"><div class="empty">Waiting for game data...</div></div>
+  <section class="overview" aria-label="游戏概览">
+    <div class="metric"><span>存活</span><strong id="alive-info">0/0</strong></div>
+    <div class="metric"><span>狼人</span><strong id="wolf-info">0</strong></div>
+    <div class="metric"><span>好人</span><strong id="good-info">0</strong></div>
+    <div class="metric"><span>事件</span><strong id="log-count">0</strong></div>
   </section>
+
+  <main class="layout">
+    <div>
+      <section class="panel">
+        <div class="panel-head"><span>玩家</span><span class="count" id="player-count">0</span></div>
+        <div class="players" id="players"><div class="empty">暂无玩家</div></div>
+      </section>
+      <section class="panel" style="margin-top:12px">
+        <div class="panel-head"><span>玩家屏幕</span><span class="count" id="screen-count">0</span></div>
+        <div class="screens" id="screens"><div class="empty">暂无屏幕快照</div></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><span>事件日志</span><span class="count" id="cursor-info">offset 0</span></div>
+      <div class="timeline" id="log"><div class="empty">等待事件</div></div>
+    </section>
+  </main>
 </div>
 
 <script>
-const ROLE_MAP={werewolf:'\u{1F43A} Wolf',villager:'\u{1F464} Villager',
-  seer:'\u{1F52E} Seer',witch:'\u{1F9A8} Witch',hunter:'\u{1F42B} Hunter',guard:'\u{1F6E1} Guard'};
-const PHASE_MAP={SETUP:'准备',DAY_SPEAK:'白天·发言',DAY_VOTE:'白天·投票',
-  NIGHT:'夜晚',ENDED:'结束'};
-const EV_MAP={role_assigned:'ROLE',speak:'SPEAK',vote:'VOTE',
-  vote_result:'VERDICT',wolf_action:'WOLF',seer_check:'SEER',
-  guard_action:'GUARD',witch_action:'WITCH',night_resolve:'NIGHT',
-  hunter_shoot:'SHOOT',game_end:'END',day_start:'DAWN',night_start:'DUSK'};
-
-let lastTs='';
+const ROLE_MAP={werewolf:'Wolf',villager:'Villager',seer:'Seer',witch:'Witch',hunter:'Hunter',guard:'Guard'};
+const ROLE_ICON={werewolf:'狼',villager:'民',seer:'预',witch:'巫',hunter:'猎',guard:'守'};
+const PHASE_MAP={SETUP:'准备',DAY_SPEAK:'白天·发言',DAY_VOTE:'白天·投票',NIGHT:'夜晚',ENDED:'结束'};
+const EV_MAP={role_assigned:'ROLE',speak:'SPEAK',vote:'VOTE',vote_result:'VERDICT',
+  wolf_action:'WOLF',seer_check:'SEER',guard_action:'GUARD',witch_action:'WITCH',
+  night_resolve:'NIGHT',hunter_shoot:'SHOOT',game_end:'END',day_start:'DAWN',night_start:'DUSK'};
 const POLL=3000;
+let logOffset=0;
+let logEntries=[];
 
-async function api(u){try{return await(await fetch(u)).json()}catch(e){return null}}
-
-function fmt(state){
-  if(!state)return;
-  const ph=(state.phase||'').toUpperCase();
-  const pb=document.getElementById('phase-badge');
-  pb.textContent=PHASE_MAP[ph]||ph;
-  pb.className='badge'+(ph.includes('NIGHT')?' badge-night':ph.includes('DAY')?' badge-day':' badge-setup');
-  document.getElementById('round-info').textContent='Day '+(state.round||'?');
-  const alive=(state.alive||[]).length,total=Object.keys(state.roles||{}).length;
-  document.getElementById('alive-info').textContent=alive+'/'+total;
-
-  const g=document.getElementById('players');g.innerHTML='';
-  for(const[n,r]of Object.entries(state.roles||{})){
-    const ok=(state.alive||[]).includes(n);
-    const d=document.createElement('div');
-    d.className='card'+(ok?'':' dead');
-    d.innerHTML=`<div class="name">${n}</div><div class="role">${ROLE_MAP[r.role]||r.role}</div>
-      <span class="tag ${ok?'tag-alive':'tag-dead'}">${ok?'存活':'出局'}</span>`;
-    g.appendChild(d);
+const $=id=>document.getElementById(id);
+function el(tag, cls, text){
+  const node=document.createElement(tag);
+  if(cls)node.className=cls;
+  if(text!==undefined)node.textContent=text;
+  return node;
+}
+async function api(url){
+  const resp=await fetch(url,{cache:'no-store'});
+  const data=await resp.json();
+  if(!resp.ok)throw new Error(data&&data.error?data.error:resp.statusText);
+  return data;
+}
+function setOnline(ok, msg){
+  $('status-dot').className='status-dot'+(ok?'':' off');
+  $('updated-info').textContent=msg||new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(!ok){
+    $('phase-badge').textContent='离线';
+    $('phase-badge').className='badge badge-error';
   }
 }
+function teamOf(role){return role==='werewolf'?'wolf':'good'}
+function fmtState(state){
+  if(!state)return;
+  const ph=String(state.phase||'').toUpperCase();
+  const pb=$('phase-badge');
+  pb.textContent=PHASE_MAP[ph]||ph||'未知';
+  pb.className='badge'+(ph.includes('NIGHT')?' badge-night':ph.includes('DAY')?' badge-day':' badge-setup');
+  $('round-info').textContent='Day '+(state.round ?? '?');
+  $('run-id').textContent=state.run_id?'Run '+state.run_id:'等待游戏数据';
 
-function detail(e){
+  const roles=state.roles||{};
+  const aliveSet=new Set(state.alive||[]);
+  const players=Object.entries(roles);
+  const alive=players.filter(([name])=>aliveSet.has(name));
+  const wolves=alive.filter(([,info])=>teamOf(info.role)==='wolf').length;
+  const goods=alive.length-wolves;
+  $('alive-info').textContent=alive.length+'/'+players.length;
+  $('wolf-info').textContent=String(wolves);
+  $('good-info').textContent=String(goods);
+  $('player-count').textContent=players.length+' 人';
+
+  const wrap=$('players');
+  wrap.textContent='';
+  if(!players.length){
+    wrap.appendChild(el('div','empty','暂无玩家'));
+    return;
+  }
+  for(const [name,info] of players){
+    const role=info.role||'?';
+    const ok=aliveSet.has(name);
+    const card=el('div','card'+(ok?'':' dead'));
+    card.appendChild(el('div','name',name));
+    card.appendChild(el('div','role',(ROLE_ICON[role]||'?')+' '+(ROLE_MAP[role]||role)));
+    const tags=el('div','tags');
+    tags.appendChild(el('span','tag '+(ok?'tag-alive':'tag-dead'),ok?'存活':'出局'));
+    tags.appendChild(el('span','tag '+(teamOf(role)==='wolf'?'tag-wolf':'tag-good'),teamOf(role)==='wolf'?'狼人阵营':'好人阵营'));
+    card.appendChild(tags);
+    wrap.appendChild(card);
+  }
+}
+function part(parent,text,bold){
+  parent.appendChild(el(bold?'b':'span','',String(text ?? '')));
+}
+function detailNode(e){
+  const d=el('span','detail');
   const ev=e.event;
-  if(ev==='speak')return`<b>${e.player}</b>: ${e.msg||''}`;
-  if(ev==='vote')return`${e.voter} → ${e.target||'-'}`;
-  if(ev==='vote_result')return e.executed?`\u{1F480} <b>${e.executed}</b> 被处决`:'平票/弃票';
-  if(ev==='wolf_action')return`狼人刀向 <b>${e.target||'?'}</b>`;
-  if(ev==='seer_check')return`${e.player||''}查验 <b>${e.target||'?'}</b> → ${e.result||'?'}`;
-  if(ev==='witch_action'){if(!e.action)return'-';return e.action==='save'?'使用解药':'使用毒药'+(e.target?` <b>${e.target}</b>`:'')}
-  if(ev==='guard_action')return e.target?`守护 <b>${e.target}</b>`:'空守';
+  if(ev==='speak'){part(d,e.player,true);part(d,': '+(e.msg||''));return d}
+  if(ev==='vote'){part(d,(e.voter||'?')+' -> '+(e.target||'-'));return d}
+  if(ev==='vote_result'){e.executed?(part(d,e.executed,true),part(d,' 被处决')):part(d,'平票/弃票');return d}
+  if(ev==='wolf_action'){part(d,'狼人刀向 ');part(d,e.target||'?',true);return d}
+  if(ev==='seer_check'){part(d,(e.player||'')+' 查验 ');part(d,e.target||'?',true);part(d,' -> '+(e.result||'?'));return d}
+  if(ev==='witch_action'){part(d,e.action==='save'?'使用解药':e.action==='poison'?'使用毒药':'不用');if(e.target){part(d,' ');part(d,e.target,true)}return d}
+  if(ev==='guard_action'){part(d,e.target?'守护 '+e.target:'空守');return d}
   if(ev==='night_resolve'){
     const p=[];
-    if(e.deaths&&e.deaths.length)p.push(`死亡: ${e.deaths.join(', ')}`);
+    if(e.deaths&&e.deaths.length)p.push('死亡: '+e.deaths.join(', '));
     if(e.saved)p.push('被救');
-    if(e.poisoned)p.push(`中毒: ${e.poisoned}`);
-    return p.length?p.join(' | '):'\u{1F304} 平安夜';
+    if(e.poisoned)p.push('中毒: '+e.poisoned);
+    if(e.guarded)p.push('守护: '+e.guarded);
+    part(d,p.length?p.join(' | '):'平安夜');return d;
   }
-  if(ev==='hunter_shoot')return`${e.hunter}开枪带走了 <b>${e.target}</b>`;
-  if(ev==='game_end')return`<b>${e.result||''}</b>`;
+  if(ev==='hunter_shoot'){part(d,(e.hunter||'?')+' 开枪带走了 ');part(d,e.target||'?',true);return d}
+  if(ev==='game_end'){part(d,e.result||'',true);return d}
   if(ev==='role_assigned'){
-    const r=e.roles||{};return Object.entries(r).map(([k,v])=>`${k}:${v}`).join(', ');
+    const roles=e.roles||{};
+    part(d,Object.entries(roles).map(([k,v])=>k+':'+v).join(', '));
+    return d;
   }
-  return Object.entries(e).filter(([k])=>!['event','ts','round','phase'].includes(k))
-    .map(([k,v])=>k+'='+v).join(' ');
+  part(d,Object.entries(e).filter(([k])=>!['event','ts','round','phase'].includes(k)).map(([k,v])=>k+'='+v).join(' '));
+  return d;
 }
-
-function renderLogs(entries){
-  const c=document.getElementById('log');
-  if(!entries||!entries.length){c.innerHTML='<div class="empty">暂无事件</div>';return}
-  const frag=document.createDocumentFragment();
-  entries.slice().reverse().forEach(e=>{
-    const d=document.createElement('div');d.className='entry';
-    const ts=(e.ts||'').substring(11,16)||'--:--';
-    const ev=e.event||'?';
-    const cls=ev==='speak?'ev-speak':ev==='vote'||ev==='vote_result'?'ev-verdict':
-      ev==='night_resolve'||ev==='night_start'?'ev-night':
-      ev==='game_end'?'ev-over':'ev-role';
-    d.innerHTML=`<span class="ts">${ts}</span><span class="ev ${cls}">${EV_MAP[ev]||ev}</span><span class="detail">${detail(e)}</span>`;
-    frag.appendChild(d);
-  });
-  c.appendChild(frag);
-  document.getElementById('log-count').textContent=
-    document.querySelectorAll('.entry').length+' 条';
+function eventClass(ev){
+  if(ev==='speak')return'ev-speak';
+  if(ev==='vote')return'ev-vote';
+  if(ev==='vote_result')return'ev-verdict';
+  if(ev==='night_resolve'||ev==='night_start'||ev==='wolf_action')return'ev-night';
+  if(ev==='game_end')return'ev-over';
+  return'ev-role';
 }
-
+function renderLogs(){
+  const c=$('log');
+  c.textContent='';
+  $('log-count').textContent=String(logEntries.length);
+  $('cursor-info').textContent='offset '+logOffset;
+  if(!logEntries.length){
+    c.appendChild(el('div','empty','等待事件'));
+    return;
+  }
+  for(const e of logEntries.slice().reverse()){
+    const row=el('div','entry');
+    row.appendChild(el('span','ts',(e.ts||'').substring(11,16)||'--:--'));
+    row.appendChild(el('span','ev '+eventClass(e.event),EV_MAP[e.event]||e.event||'?'));
+    row.appendChild(detailNode(e));
+    c.appendChild(row);
+  }
+}
+function renderScreens(screens){
+  const entries=Object.entries(screens||{});
+  const wrap=$('screens');
+  wrap.textContent='';
+  $('screen-count').textContent=entries.length+' 个';
+  if(!entries.length){
+    wrap.appendChild(el('div','empty','暂无屏幕快照'));
+    return;
+  }
+  for(const [name,text] of entries){
+    const box=el('article','screen');
+    box.appendChild(el('h3','',name));
+    box.appendChild(el('pre','',text||''));
+    wrap.appendChild(box);
+  }
+}
 async function poll(){
-  const [st,logs]=await Promise.all([api('/api/state'),api('/api/log?since='+encodeURIComponent(lastTs))]);
-  if(st)fmt(st);
-  if(logs&&logs.length){renderLogs(logs);lastTs=logs[logs.length-1].ts||lastTs}
-  setTimeout(poll,POLL);
+  try{
+    const [state,logPage,screens]=await Promise.all([
+      api('/api/state'),
+      api('/api/log?offset='+logOffset),
+      api('/api/screens')
+    ]);
+    fmtState(state);
+    if(Array.isArray(logPage.entries)&&logPage.entries.length){
+      logEntries=logEntries.concat(logPage.entries);
+      logOffset=logPage.next_offset;
+      renderLogs();
+    }else if(logPage.next_offset!==undefined){
+      logOffset=logPage.next_offset;
+      renderLogs();
+    }
+    renderScreens(screens);
+    setOnline(true);
+  }catch(err){
+    setOnline(false,err.message||'请求失败');
+  }finally{
+    setTimeout(poll,POLL);
+  }
 }
-
 poll();
 </script>
 </body>
