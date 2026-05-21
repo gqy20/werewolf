@@ -88,9 +88,13 @@ pointer-events:none;z-index:0;opacity:.6}
 .card::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
   background:linear-gradient(135deg,transparent 60%, var(--card-fade, transparent));
   pointer-events:none;opacity:0;transition:opacity .4s}
+.card{cursor:pointer}
 .card:hover{transform:translateY(-2px);border-color:var(--text-dim);box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .card:hover::before{opacity:1}
-.card.dead{opacity:.45;border-left-color:var(--dead-text)!important}
+.card.selected{border-color:var(--phase-accent,var(--day-accent));
+  box-shadow:0 0 20px var(--phase-glow,var(--day-glow)), inset 0 0 12px rgba(212,160,32,.06);
+  transform:translateY(-1px)}
+.card.dead{opacity:.45;border-left-color:var(--dead-text)!important;cursor:pointer}
 .card.dead .name{text-decoration:line-through;text-decoration-color:var(--dead-text)}
 .card.dead .role-tag{color:var(--dead-text);border-color:var(--border-dim)}
 .card-dead-badge{position:absolute;top:6px;right:6px;font-size:.6rem;
@@ -166,16 +170,18 @@ pointer-events:none;z-index:0;opacity:.6}
   var(--evil-dim), transparent 60%);border-color:var(--evil)}
 .end-banner strong{font-size:1.1rem}
 
-/* ── Screens Panel ── */
-.screens{display:grid;gap:8px;padding:10px;max-height:280px;overflow-y:auto}
-.screen{border:1px solid var(--border-dim);border-radius:var(--radius-sm);overflow:hidden;
-  background:#070a0f}
-.screen h3{padding:7px 10px;border-bottom:1px solid var(--border-dim);
-  font-size:.7rem;font-family:var(--font-mono);color:var(--night-accent);
-  background:rgba(10,14,20,.6);margin:0}
-.screen pre{padding:9px;max-height:150px;overflow:auto;
-  white-space:pre-wrap;color:#7ec699;font:11px/1.45 var(--font-mono);
+/* ── Terminal Detail Panel (player-click → show) ── */
+.terminal-detail{transition:all .3s ease}
+.terminal-body{background:#070a0f;max-height:340px;overflow:auto;
   scrollbar-width:thin;scrollbar-thumb:var(--border-dim)}
+.terminal-body::-webkit-scrollbar{width:4px}
+.terminal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.terminal-body pre{padding:14px;margin:0;min-height:100px;
+  white-space:pre-wrap;color:#7ec699;font:12px/1.55 var(--font-mono);
+  word-break:break-all}
+.terminal-empty{display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:40px 16px;color:var(--text-dim);font-style:italic;font-size:.82rem}
+.terminal-empty::before{content:'📟';font-size:2rem;opacity:.35}
 
 /* ── Speak Log Panel ── */
 .speak-log{padding:14px 16px;max-height:480px;overflow-y:auto;font-size:.77rem;
@@ -270,10 +276,10 @@ pointer-events:none;z-index:0;opacity:.6}
   .tk-bar-name{width:56px}}
 
 /* Staggered entrance */
-.panel>.players,.panel>.timeline,.panel>.screens,.panel>.speak-log,.token-panel{opacity:0;animation:panel-in .5s ease forwards}
+.panel>.players,.panel>.timeline,.panel>.terminal-detail,.panel>.speak-log,.token-panel{opacity:0;animation:panel-in .5s ease forwards}
 .panel:nth-of-type(1)>.players{animation-delay:.05s}
 .panel:nth-of-type(2)>.timeline{animation-delay:.15s}
-.panel:nth-of-type(1)>.screens{animation-delay:.2s}
+.panel:nth-of-type(1)>.terminal-detail{animation-delay:.12s}
 .panel:nth-of-type(2)>.speak-log{animation-delay:.25s}
 .token-panel{animation-delay:.08s}
 @keyframes panel-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
@@ -338,9 +344,14 @@ pointer-events:none;z-index:0;opacity:.6}
         <div class="panel-head"><span>玩家</span><span class="count" id="player-count">0</span></div>
         <div class="players" id="players"><div class="empty">等待游戏数据</div></div>
       </section>
-      <section class="panel" style="margin-top:12px">
-        <div class="panel-head"><span>终端</span><span class="count" id="screen-count">0</span></div>
-        <div class="screens" id="screens"><div class="empty">暂无快照</div></div>
+      <section class="panel terminal-detail" id="terminal-panel" style="display:none">
+        <div class="panel-head">
+          <span><span id="term-player-icon">📟</span> <span id="term-player-name">-</span></span>
+          <span class="count" id="screen-count">0 个终端</span>
+        </div>
+        <div class="terminal-body" id="terminal-content">
+          <div class="terminal-empty">点击上方玩家卡片查看终端</div>
+        </div>
       </section>
     </div>
 
@@ -370,6 +381,7 @@ const EV_MAP={speak:'💬',vote:'🗳',vote_result:'⚖',night_resolve:'🌙',
   hunter_shoot:'🔫',game_end:'🏁',role_assigned:'🎲',day_start:'☀️',
   night_start:'🌙'};
 let logOffset=0,logEntries=[],prevPhase='',knownDead=new Set();
+let selectedPlayer=null,allScreens={};
 
 const $=id=>document.getElementById(id);
 
@@ -441,8 +453,10 @@ function fmtState(state){
   if(!players.length){wrap.appendChild(el('div','empty','暂无玩家'));return}
   for(const [name,info] of players){
     const role=info.role||'?',ok=aliveSet.has(name),isWolf=role==='werewolf';
-    const card=el('div','card'+(ok?'':' dead'));
+    const card=el('div','card'+(ok?'':' dead')+(selectedPlayer===name?' selected':''));
     if(!ok){const badge=el('span','card-dead-badge','☠ RIP');card.appendChild(badge);}
+    card.dataset.player=name;
+    card.onclick=()=>selectPlayer(name);
 
     card.appendChild(el('span','role-icon',ROLE_ICON[role]||'?'));
     const nameRow=el('div','name');
@@ -571,16 +585,43 @@ function renderLogs(){
   c.appendChild(frag);
 }
 
-// ── Screens ──
-function renderScreens(screens){
-  const wrap=$('screens');wrap.textContent='';
-  $('screen-count').textContent=Object.keys(screens).length+' 个';
-  if(!Object.keys(screens).length){wrap.appendChild(el('div','empty','暂无快照'));return}
-  for(const [name,text] of Object.entries(screens)){
-    const box=el('article','screen');
-    box.appendChild(el('h3','',name));
-    box.appendChild(el('pre','',text.replace(/</g,'&lt;'))); // basic HTML escape
-    wrap.appendChild(box);
+// ── Terminal Detail (click player → show their screen) ──
+function selectPlayer(name){
+  selectedPlayer=name;
+  // Update card selected states
+  document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+  const card=document.querySelector('.card[data-player="'+name+'"]');
+  if(card)card.classList.add('selected');
+  // Show terminal panel
+  const panel=$('terminal-panel');
+  panel.style.display='';
+  $('term-player-name').textContent=name;
+  // Get role icon for header
+  const stateEl=$('state-data');
+  let roleIcon='📟';
+  if(stateEl)try{const s=JSON.parse(stateEl.textContent||'{}');
+    const r=s.roles?.[name]?.role;if(r)roleIcon=ROLE_ICON[r]||'📟';}catch(e){}
+  $('term-player-icon').textContent=roleIcon;
+  // Render content
+  renderTerminalContent(allScreens[name]||null);
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function renderTerminalContent(text){
+  const c=$('terminal-content');
+  if(!text){
+    c.innerHTML='<div class="terminal-empty">等待截屏数据...</div>';
+    return;
+  }
+  c.innerHTML='<pre>'+esc(text)+'</pre>';
+}
+
+function updateScreenData(screens){
+  allScreens=screens||{};
+  $('screen-count').textContent=Object.keys(allScreens).length+' 个终端';
+  // Auto-refresh if a player is selected
+  if(selectedPlayer && allScreens[selectedPlayer]){
+    renderTerminalContent(allScreens[selectedPlayer]);
   }
 }
 
@@ -731,7 +772,7 @@ async function poll(){
     }else if(logPage.next_offset!==undefined){
       logOffset=logPage.next_offset;renderLogs();
     }
-    renderScreens(screens);
+    updateScreenData(screens);
     renderSpeakLog(speakData);
     renderUsage(usageData);
     setOnline(true);
