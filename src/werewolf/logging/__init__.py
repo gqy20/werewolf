@@ -21,6 +21,7 @@ class GameLogger:
         self.speak_log_path = self.run_dir / "speak_log.md"
         self._log_file: list[dict] | None = []
         self._state: dict = {}
+        self._screens: dict[str, str] = {}
 
     # ── 状态快照（每阶段覆盖写入）─────────────────
 
@@ -253,6 +254,22 @@ class GameLogger:
         self._append_to_speak_log(
             f"\n## 第 {round_num} 天 — 夜晚\n> {' | '.join(parts)}\n"
         )
+
+    # ── 屏幕快照 ───────────────────────────────────────
+
+    def capture_screens(self, sessions: list[str],
+                        session_to_name: dict[str, str]) -> None:
+        """截取所有存活玩家的 tmux 屏幕内容，供 Dashboard 展示"""
+        from werewolf.tmux import tmux_capture
+        screens: dict[str, str] = {}
+        for sess in sessions:
+            name = session_to_name.get(sess, sess)
+            try:
+                text = tmux_capture(sess, 15)
+                screens[name] = text
+            except Exception:
+                screens[name] = "(capture failed)"
+        self._screens = screens
 
 
 def _ts() -> str:

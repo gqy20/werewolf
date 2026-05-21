@@ -7,7 +7,7 @@ from pathlib import Path
 from werewolf.config import load_config, load_registry, save_registry
 from werewolf.dashboard import start_dashboard
 from werewolf.game import Game, GamePhase
-from werewolf.logging import GameLogger
+from werewolf.logging import GameLogger, _now_iso
 from werewolf.tmux import (
     build_jsonl_map,
     discover_task_uuid,
@@ -19,6 +19,7 @@ from werewolf.tmux import (
     kill_session,
     list_sessions,
     session_exists,
+    tmux_capture,
     tmux_send,
 )
 
@@ -28,7 +29,12 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 def cmd_bootstrap(n: int = 8):
     cfg = load_config()
     prefix = "ww-"
-    claude_cmd = "claude --dangerously-skip-permissions --name"
+    player_settings = str(BASE_DIR / "data" / "player-settings.json")
+    claude_cmd = (
+        f"claude --dangerously-skip-permissions "
+        f"--settings {player_settings} "
+        f"--name"
+    )
     from datetime import datetime, timezone
     from werewolf.logging import _ts_dir
     arena_dir = BASE_DIR / "data" / "games" / _ts_dir()
@@ -210,31 +216,62 @@ def cmd_run():
         import random as _rnd
         _rnd.shuffle(alive)
 
-        speak_timeout = rules.get("speak_timeout_sec", 60)
+        speak_timeout = rules.get("speak_timeout_sec", 180)
         vote_timeout = rules.get("vote_timeout_sec", 45)
 
-        for sess in alive:
-            pname = session_to_name[sess]
-            player = game.get_player(pname)
-            rdisp = game.role_display(player.role) if player and _rnd.random() < 0.3 else "???"
+        # ── 并行发言：同时发提示 → 轮询等待 → 批量提取 ──
+        before_ts = _now_iso()
+        speak_order = list(alive)
+        _rnd.shuffle(speak_order)
 
+        for sess in speak_order:
+            pname = session_to_name[sess]
             others = [session_to_name[s] for s in alive if s != sess]
             tmux_send(sess,
                       f"\n🗣️ 轮到你 ({pname})\n"
                       f"   请先读取 speak_log.md 了解当前局势\n"
                       f"   存活: {', '.join(others)}\n"
                       f"   发表看法（简短）:")
-            time.sleep(speak_timeout)
 
-            # 从 jsonl 日志提取真实回复（替代 tmux capture + 噪音过滤）
-            jpath = jsonl_map.get(sess)
-            if jpath:
-                reply = extract_reply_from_jsonl(jpath)
-            else:
-                # fallback: 尝试通过 session name 查找
-                jpath = find_jsonl_path(sess, pname)
-                reply = extract_reply_from_jsonl(jpath) if jpath else ""
+        # 轮询等待：每隔一段时间检查是否所有人都有回复
+        max_wait = max(speak_timeout * 2, 300)  # 至少 5 分钟
+        poll_interval = 30
+        elapsed = 0
+        print(f"  ⏳ 等待发言 (最多 {max_wait}s)...")
 
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            # 检查已回复人数
+            replied = 0
+            for sess in alive:
+                pname = session_to_name[sess]
+                jpath = jsonl_map.get(sess) or find_jsonl_path(sess, pname)
+                if jpath and extract_reply_from_jsonl(jpath, since_ts=before_ts):
+                    replied += 1
+
+            print(f"    [{elapsed}s] 已回复 {replied}/{len(alive)}")
+            if replied >= len(alive):
+                print(f"    ✅ 全部回复完毕 ({elapsed}s)")
+                break
+        else:
+            print(f"    ⏰ 超时 ({max_wait}s)，部分玩家可能沉默")
+
+        # 最终批量提取回复
+        replies: dict[str, tuple[str, str]] = {}
+        for sess in alive:
+            pname = session_to_name[sess]
+            player = game.get_player(pname)
+            rdisp = game.role_display(player.role) if player and _rnd.random() < 0.3 else "???"
+            jpath = jsonl_map.get(sess) or find_jsonl_path(sess, pname)
+            reply = extract_reply_from_jsonl(jpath, since_ts=before_ts) if jpath else ""
+            replies[pname] = (rdisp, reply)
+
+        # 广播发言结果
+        for sess in alive:
+            pname = session_to_name[sess]
+            rdisp, reply = replies[pname]
             target_others = [s for s in alive if s != sess]
             if reply:
                 logger.append_speak(round_num, pname, rdisp, reply)
@@ -246,6 +283,8 @@ def cmd_run():
                 logger.append_speak(round_num, pname, rdisp, "（沉默）")
                 for t in target_others:
                     tmux_send(t, f"💬 {pname}: （沉默）")
+
+        logger.capture_screens(alive, session_to_name)
 
         # 投票（并行：同时发 → 统一等 → 批量收）
         print(f"  🗳️ 投票...")
@@ -286,6 +325,7 @@ def cmd_run():
         logger.append_vote_result(round_num, dict(votes_raw),
                                   dead[0] if dead else None, game)
         logger.save_state(game)
+        logger.capture_screens(alive, session_to_name)
 
         if dead:
             dname = dead[0] if dead else None
@@ -519,6 +559,7 @@ def cmd_run():
             session_to_name.get(poison_target) if poison_target else None,
             session_to_name.get(guarded_tonight) if guarded_tonight else None,
         )
+        logger.capture_screens(alive, session_to_name)
 
         round_num += 1
 

@@ -270,10 +270,13 @@ def extract_reply_from_jsonl(jsonl_path: Path,
                 # 只看 assistant 消息
                 if d.get("type") != "assistant":
                     continue
-                # 时间过滤：只取 since_ts 之后的消息
+                # 时间过滤：只取 since_ts 之后的消息（兼容 Z/+00:00 格式）
                 ts = d.get("timestamp", "")
-                if since_ts and ts <= since_ts:
-                    continue
+                if since_ts:
+                    ts_norm = ts.replace("Z", "+00:00").split(".")[0]
+                    ref_norm = since_ts.replace("Z", "+00:00").split(".")[0]
+                    if ts_norm <= ref_norm:
+                        continue
                 # 提取 text block
                 content = d.get("message", {}).get("content", [])
                 if not isinstance(content, list):
