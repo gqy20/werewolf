@@ -356,6 +356,10 @@ const PHASE={SETUP:{icon:'◉',label:'准备',accent:'#6e7681',surface:'rgba(110
   NIGHT:{icon:'🌙',label:'夜晚',accent:'var(--night-accent)',surface:'rgba(74,124,184,.08)',border:'rgba(74,124,184,.2)',glow:'var(--night-glow)'},
   ENDED:{icon:'✦',label:'结束',accent:'#6aa7ff',surface:'rgba(106,167,255,.08)',border:'rgba(106,167,255,.2)',glow:'rgba(106,167,255,.08)'}};
 const POLL=3000;
+const EV_MAP={speak:'💬',vote:'🗳',vote_result:'⚖',night_resolve:'🌙',
+  wolf_action:'🔪',seer_check:'👁',guard_action:'🛡',witch_action:'🦨',
+  hunter_shoot:'🔫',game_end:'🏁',role_assigned:'🎲',day_start:'☀️',
+  night_start:'🌙'};
 let logOffset=0,logEntries=[],prevPhase='',knownDead=new Set();
 
 const $=id=>document.getElementById(id);
@@ -374,6 +378,9 @@ function setOnline(ok,msg){
   $('updated-info').textContent=msg||new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   if(!ok){$('phase-icon').textContent='✕';$('phase-label').textContent='离线';
     document.documentElement.style.setProperty('--phase-accent','#cf3030');
+  }else{
+    const ph=$('state-data')?.textContent;
+    if(ph)try{const s=JSON.parse(ph);if(s.phase)applyPhase(String(s.phase).toUpperCase());}catch(e){}
   }
 }
 
@@ -628,7 +635,7 @@ function renderSpeakLog(data){
     }
     // Regular paragraph - only add non-empty non-header lines
     const trimmed=line.trim();
-    if(trim && !trimmed.startsWith('#') && !trimmed.startsWith('|')){
+    if(trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('|')){
       frag.appendChild(el('p','',trimmed));
     }
   });
@@ -686,9 +693,9 @@ function renderUsage(data){
 async function poll(){
   try{
     const[state,logPage,screens,speakData,usageData]=await Promise.all([
-      api('/api/state'),
-      api('/api/log?offset='+logOffset),
-      api('/screens'),
+      api('/api/state').catch(()=>null),
+      api('/api/log?offset='+logOffset).catch(()=>({entries:[],next_offset:logOffset,total:0})),
+      api('/api/screens').catch(()=>({})),
       api('/api/speak-log').catch(()=>({content:'',exists:false})),
       api('/api/usage').catch(()=>null)
     ]);
@@ -703,7 +710,7 @@ async function poll(){
       renderLogs();
       // Flash newest entries
       setTimeout(()=>{
-        const entries=$('.timeline .entry');
+        const entries=$('.timeline .entry')||[];
         for(let i=0;i<Math.min(3,newCount);i++)
           if(entries[i])entries[i].classList.add('new-flash');
       },50);
