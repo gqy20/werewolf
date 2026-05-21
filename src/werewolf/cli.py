@@ -168,7 +168,10 @@ def cmd_run():
     logger.init_speak_log(game.players, cfg)
 
     save_registry(registry)
-    time.sleep(rules.get("speak_timeout_sec", 60))
+    # 等待实例完成冷启动（Claude Code 首次响应需要 3-7 分钟初始化）
+    warmup = rules.get("warmup_sec", 180)
+    print(f"  ⏳ 等待实例预热 ({warmup}s)...")
+    time.sleep(warmup)
 
     # 公布配置摘要
     role_counts = {}
@@ -264,7 +267,7 @@ def cmd_run():
         for sess in alive:
             pname = session_to_name[sess]
             player = game.get_player(pname)
-            rdisp = game.role_display(player.role) if player and _rnd.random() < 0.3 else "???"
+            rdisp = "???"  # 角色保密，不泄露
             jpath = jsonl_map.get(sess) or find_jsonl_path(sess, pname)
             reply = extract_reply_from_jsonl(jpath, since_ts=before_ts) if jpath else ""
             replies[pname] = (rdisp, reply)
@@ -295,16 +298,17 @@ def cmd_run():
         opts_str = "\n".join(f"   {i}. {n}" for i, n in options)
 
         _broadcast(alive, f"\n🗳️ 投票！选择处决对象:\n{opts_str}\n\n你的投票:")
+        vote_before_ts = _now_iso()
         time.sleep(vote_timeout)
 
         votes_raw: dict[str, str | None] = {}
         candidates = [session_to_name[s] for s in alive]
         for sess in alive:
             pname = session_to_name[sess]
-            # 从 jsonl 提取投票回复
+            # 从 jsonl 提取投票回复（只取投票阶段之后的消息）
             jpath = jsonl_map.get(sess) or find_jsonl_path(sess, pname)
             if jpath:
-                vote_text = extract_reply_from_jsonl(jpath)
+                vote_text = extract_reply_from_jsonl(jpath, since_ts=vote_before_ts)
                 pick = extract_vote(vote_text, candidates)
             else:
                 out = tmux_capture(sess, 10)
@@ -391,7 +395,9 @@ def cmd_run():
             _wolf_candidates = [session_to_name[s] for s in goods]
             gopts = "\n".join(f"   {i+1}. {n}" for i, n in enumerate(_wolf_candidates))
             for w in wolves:
-                tmux_send(w, f"🐺 刀谁？\n{gopts}\n输入编号:")
+                tmux_send(w, f"🐺 刀谁？\n{gopts}\n输入编号:\n"
+                    f"⚠️ 白天发言时必须伪装成好人：不要说'刀''杀''清理'等词，\n"
+                    f"   假装在认真分析局势，可以适当引导投票方向。")
 
         # --- 守卫 ---
         guards = [s for s in alive if players_raw[s].get("role") == "guard"]
@@ -541,6 +547,33 @@ def cmd_run():
                     dinfo.append(f"{d}({game.role_display(dr)})")
                     tmux_send(dsess, "你已死亡，留遗言:")
                     time.sleep(20)
+
+                    # 猎人开枪（无论被刀还是被投票处决都能开枪）
+                    if dr == "hunter":
+                        htargets = [s for s in alive if s != dsess]
+                        if htargets:
+                            hopts = "\n".join(
+                                f"   {i+1}. {session_to_name[s]}"
+                                for i, s in enumerate(htargets))
+                            tmux_send(dsess,
+                                f"🐫 开枪！你可以带走一个人:\n{hopts}\n"
+                                f"输入编号(0=不开枪):")
+                            time.sleep(30)
+                            hout = tmux_capture(dsess, 10)
+                            hpick = extract_vote(
+                                hout,
+                                [session_to_name[s] for s in htargets] + ["skip"])
+                            if hpick and hpick != "skip":
+                                hsess = name_to_session.get(hpick)
+                                if hsess and hsess in players_raw:
+                                    players_raw[hsess]["alive"] = False
+                                    hr = game.get_player(hpick).role if game.get_player(hpick) else "?"
+                                    _broadcast(alive,
+                                        f"🔫 猎人 {d} 带走了 {hpick}({game.role_display(hr)})!")
+                                    logger.log("hunter_shoot", hunter=d, target=hpick)
+                                    # 更新存活列表（猎人开枪的人从 alive 移除）
+                                    if hsess in alive:
+                                        alive.remove(hsess)
             _broadcast(alive, f"\n☠️ 昨晚死亡: {', '.join(dinfo)}")
             logger.log("night_resolve", deaths=dinfo,
                        saved=wolf_saved,
