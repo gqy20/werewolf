@@ -114,7 +114,7 @@ pointer-events:none;z-index:0;opacity:.6}
 .timeline::-webkit-scrollbar{width:4px}
 .timeline::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 
-.entry{display:grid;grid-template-columns:40px 1fr;gap:8px;
+.entry{display:grid;grid-template-columns:40px 36px 1fr;gap:8px;
   padding:9px 14px;border-bottom:1px solid var(--border-dim);
   font-size:.75rem;align-items:start;transition:background .3s;
   animation:slide-in .35s ease-out both}
@@ -135,22 +135,23 @@ pointer-events:none;z-index:0;opacity:.6}
 .ev-over{color:var(--night-accent);background:rgba(74,124,184,.15)}
 .ev-role{color:var(--text-dim);background:rgba(110,167,255,.08)}
 
-.detail{min-width:0;color:var(--text);overflow-wrap:anywhere;line-height:1.5}
+.detail{color:var(--text);overflow-wrap:anywhere;line-height:1.5;min-width:0;word-break:break-word}
 
 /* Speak event — chat bubble style */
 .speak-bubble{display:flex;flex-direction:column;gap:3px;padding:8px 12px;
   border-radius:12px;border-left:3px solid var(--bubble-color,var(--border));
-  background:rgba(19,25,34,.5)}
+  background:rgba(19,25,34,.5);width:100%;box-sizing:border-box}
 .speaker-name{font-weight:700;font-size:.72rem;color:var(--bubble-color,var(--text-dim))}
 .speaker-msg{font-size:.76rem;line-height:1.5}
 
 /* Vote event */
-.vote-row{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.73rem}
-.vote-arrow{color:var(--day-accent)}
+.vote-row{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.73rem;flex-wrap:wrap}
+.vote-arrow{color:var(--day-accent);flex-shrink:0}
 
 /* Night event block */
 .night-block{background:rgba(10,14,20,.6);border-radius:var(--radius-sm);
-  padding:8px 12px;margin:4px 0;border-left:2px solid var(--night-accent)}
+  padding:8px 12px;margin:4px 0;border-left:2px solid var(--night-accent);
+  width:100%;box-sizing:border-box}
 .night-item{display:flex;align-items:center;gap:6px;font-size:.73rem;padding:3px 0;
   border-bottom:1px solid var(--border-dim);line-height:1.4}
 .night-item:last-child{border-bottom:none}
@@ -216,15 +217,23 @@ pointer-events:none;z-index:0;opacity:.6}
 
 /* Vote result block */
 .vote-result{margin:10px 0;padding:10px 14px;border-radius:var(--radius-sm);
-  background:rgba(207,48,48,.06);border:1px solid rgba(207,48,48,.15)}
+  background:rgba(207,48,48,.06);border:1px solid rgba(207,48,48,.15);
+  width:100%;box-sizing:border-box}
 .vote-result .vr-exec{font-weight:700;color:var(--evil)}
-.vote-result .vr-safe{color:var(--text-dim)}
+.vote-result .vr-safe{color:var(--text-dim);display:inline-block}
 
 /* Empty states */
 .empty{padding:40px 16px;text-align:center;color:var(--text-dim);font-size:.82rem}
 .empty-speak{padding:28px 16px;text-align:center;color:var(--text-dim);
   font-style:italic;font-size:.82rem;display:flex;flex-direction:column;align-items:center;gap:8px}
 .empty-speak::before{content:'💬';font-size:1.8rem;opacity:.4}
+
+/* Role assigned grid */
+.role-grid{display:flex;flex-wrap:wrap;gap:6px 12px;padding:6px 0}
+.role-item{font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);
+  background:var(--bg-elev);border:1px solid var(--border-dim);border-radius:var(--radius-sm);
+  padding:3px 10px;white-space:nowrap}
+.role-item b{color:var(--text-bright)}
 
 /* ── Token Usage Panel ── */
 .token-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
@@ -279,7 +288,7 @@ pointer-events:none;z-index:0;opacity:.6}
   .header{flex-direction:column;align-items:flex-start;gap:8px}
   .overview{grid-template-columns:repeat(2,1fr)}
   .players{grid-template-columns:repeat(2,1fr)}
-  .entry{grid-template-columns:32px 1fr;gap:6px;padding:7px 10px}
+  .entry{grid-template-columns:32px 30px 1fr;gap:6px;padding:7px 10px}
   .metric strong{font-size:1rem}
 }
 </style>
@@ -366,7 +375,12 @@ const $=id=>document.getElementById(id);
 
 function el(tag,cls,text){
   const n=document.createElement(tag);
-  if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;
+  if(cls)n.className=cls;
+  if(text!==undefined){
+    if(typeof text==='string' && text.includes('<')) n.innerHTML=text;
+    else n.textContent=text;
+  }
+  return n;
 }
 async function api(url){
   const r=await fetch(url,{cache:'no-store'});
@@ -513,9 +527,9 @@ function detailNode(e){
   }
   // ROLE ASSIGNED
   if(ev==='role_assigned'){
-    const wrap=el('div','');
+    const wrap=el('div','role-grid');
     Object.entries(e.roles||{}).sort().forEach(([k,v])=>{
-      wrap.appendChild(el('span','',`${k}: ${v} `));
+      wrap.appendChild(el('span','role-item',`${k}: <b>${v}</b>`));
     });
     return wrap;
   }
