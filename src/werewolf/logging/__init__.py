@@ -22,6 +22,7 @@ class GameLogger:
         self._log_file: list[dict] | None = []
         self._state: dict = {}
         self._screens: dict[str, str] = {}
+        self._registry: dict = {}
 
     # ── 状态快照（每阶段覆盖写入）─────────────────
 

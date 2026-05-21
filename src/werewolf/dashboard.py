@@ -4,6 +4,8 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+from werewolf.tmux import build_jsonl_map, extract_token_usage
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 _DEFAULT_PORT = 9876
@@ -26,6 +28,7 @@ def _make_handler(logger):
                 "/api/log": self._api_log,
                 "/api/screens": self._api_screens,
                 "/api/speak-log": self._api_speak_log,
+                "/api/usage": self._api_usage,
             }
             handler = routes.get(path)
             if handler:
@@ -111,6 +114,33 @@ def _make_handler(logger):
                 return
             content = logger.speak_log_path.read_text(encoding="utf-8")
             self._json({"content": content, "exists": True})
+
+        def _api_usage(self, _query):
+            logger = self._logger
+            if not logger:
+                self._json({"error": "no logger"}, 404)
+                return
+            registry = getattr(logger, "_registry", {})
+            jsonl_map = build_jsonl_map(registry) if registry else {}
+            per_player: dict[str, dict] = {}
+            total = {"input_tokens": 0, "output_tokens": 0,
+                     "cache_input": 0, "cache_read": 0,
+                     "api_calls": 0}
+            for sess, jpath in jsonl_map.items():
+                u = extract_token_usage(jpath)
+                pname = registry.get("players", {}).get(sess, {}).get("display_name", sess)
+                per_player[pname] = u
+                for k in total:
+                    total[k] += u.get(k, 0)
+            # cost estimate (rough: input $3/M, output $15/M for Claude-like pricing)
+            total["cost_estimate_usd"] = round(
+                (total["input_tokens"] + total["cache_input"]) / 1_000_000 * 3
+                + total["output_tokens"] / 1_000_000 * 15, 4)
+            self._json({
+                "total": total,
+                "players": per_player,
+                "player_count": len(per_player),
+            })
 
         def log_message(self, format, *args):
             pass

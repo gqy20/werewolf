@@ -3,92 +3,284 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Werewolf Dashboard</title>
+<title>🐺 Werewolf Command</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1318;--surface:#171d24;--surface-2:#1e2630;--border:#33404d;
-  --blue:#6aa7ff;--red:#ff6b61;--amber:#e1b653;--green:#62c978;
-  --text:#d8dee6;--text-dim:#99a3ad;--radius:6px
+  --bg:#080b10;--bg-elev:#0d1117;--bg-card:#131922;
+  --border:#262e3c;--border-dim:#1c2432;
+  --text:#c9d1d9;--text-dim:#6e7681;--text-bright:#f0f3f6;
+  --day-accent:#d4a020;--day-glow:rgba(212,160,32,.12);
+  --night-accent:#4a7cb8;--night-glow:rgba(74,124,184,.10);
+  --good:#3db86a;--good-dim:rgba(61,184,106,.14);
+  --evil:#cf3030;--evil-dim:rgba(207,48,48,.12);
+  --dead-bg:#0d1017;--dead-text:#4a5568;
+  --radius:8px;--radius-sm:5px;
+  --font-mono:ui-monospace,SFMono-Regular,'Cascadia Code','Fira Code',Consolas,'Liberation Mono',monospace;
+  --font-body:'Noto Serif SC','Source Han Serif SC','Songti SC',Georgia,'Times New Roman',serif;
+  --transition:.6s cubic-bezier(.4,0,.2,1);
 }
-html{font-size:14px;background:var(--bg);color:var(--text)}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-  min-height:100vh;line-height:1.5}
-.app{max-width:1280px;margin:0 auto;padding:16px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;background:var(--bg);color:var(--text);font-family:var(--font-body);line-height:1.55}
+body{min-height:100vh}
+
+/* ── Background atmosphere ── */
+body::before{content:'';position:fixed;inset:0;background:
+  radial-gradient(ellipse 80% 60% at 50% -20%, var(--phase-glow) 0%, transparent 70%);
+pointer-events:none;z-index:0;transition:background var(--transition)}
+body::after{content:'';position:fixed;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E/feTurbulence%3E/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+pointer-events:none;z-index:0;opacity:.6}
+
+.app{position:relative;z-index:1;max-width:1360px;margin:0 auto;padding:16px 20px}
+
+/* ── Header ── */
 .header{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding:12px 0 16px;margin-bottom:14px;border-bottom:1px solid var(--border)}
-.title h1{font-size:1.15rem;font-weight:700}
-.title p{color:var(--text-dim);font-size:.78rem}
+  padding:14px 18px 16px;margin-bottom:14px;
+  background:linear-gradient(180deg,var(--bg-elev),transparent);
+  border-bottom:1px solid var(--border);position:relative}
+.header::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--phase-accent),transparent);
+  opacity:.5;transition:opacity var(--transition)}
+
+.title h1{font-size:1.05rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--text-bright);display:flex;align-items:center;gap:8px}
+.title p{font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);margin-top:2px}
+
+.phase-indicator{display:flex;align-items:center;gap:10px;padding:6px 16px;border-radius:99px;
+  font-weight:700;font-size:.82rem;letter-spacing:.03em;
+  background:var(--phase-surface);color:var(--phase-accent);
+  border:1px solid var(--phase-border);box-shadow:0 0 20px var(--phase-glow), inset 0 1px 0 rgba(255,255,255,.04);
+  transition:all var(--transition)}
+.phase-icon{font-size:1.1rem;line-height:1}
+.phase-label{text-transform:uppercase;font-size:.72rem;opacity:.8}
+
 .meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 10px;border-radius:999px;
-  font-size:.75rem;font-weight:700;letter-spacing:.03em}
-.badge-day{background:rgba(98,201,120,.14);color:var(--green)}
-.badge-night{background:rgba(225,182,83,.14);color:var(--amber)}
-.badge-setup{background:rgba(153,163,173,.14);color:var(--text-dim)}
-.badge-error{background:rgba(255,107,97,.14);color:var(--red)}
-.stat{font-size:.78rem;color:var(--text-dim);white-space:nowrap}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(98,201,120,.12)}
-.status-dot.off{background:var(--red);box-shadow:0 0 0 3px rgba(255,107,97,.12)}
-.overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
-.metric{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:10px 12px}
-.metric span{display:block;color:var(--text-dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
-.metric strong{display:block;margin-top:2px;font-size:1.05rem}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:12px;align-items:start}
-.panel{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);overflow:hidden}
+.status-dot{width:9px;height:9px;border-radius:50%;background:var(--good);
+  box-shadow:0 0 8px var(--good-dim);animation:pulse-dot 2.5s infinite}
+.status-dot.off{background:var(--evil);box-shadow:0 0 8px var(--evil-dim);animation:none}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
+.stat{font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);padding:3px 8px;
+  background:var(--bg-card);border-radius:var(--radius-sm);border:1px solid var(--border-dim)}
+
+/* ── Overview Metrics ── */
+.overview{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.metric{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 14px;position:relative;overflow:hidden}
+.metric::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;
+  background:var(--metric-color, var(--day-accent));opacity:.6;border-radius:var(--radius) 0 0 var(--radius)}
+.metric span{display:block}
+.metric span:first-child{font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--text-dim);font-weight:600;margin-bottom:2px}
+.metric strong{font-size:1.15rem;font-weight:700;color:var(--text-bright)}
+
+/* ── Main Layout ── */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,560px);gap:12px;align-items:start}
+.panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700;font-size:.82rem}
-.count{font-size:.72rem;color:var(--text-dim);font-weight:500}
-.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;padding:10px}
-.card{min-width:0;padding:10px;border:1px solid var(--border);border-radius:var(--radius);
-  background:var(--surface-2);transition:border-color .15s,opacity .15s}
-.card:hover{border-color:var(--text-dim)}
-.card.dead{opacity:.54}
-.name{font-weight:700;font-size:.86rem;overflow-wrap:anywhere}
-.role{font-size:.73rem;color:var(--text-dim);margin-top:2px;overflow-wrap:anywhere}
-.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.tag{display:inline-flex;align-items:center;min-height:18px;font-size:.66rem;padding:1px 7px;border-radius:999px;font-weight:700}
-.tag-alive{color:var(--green);background:rgba(98,201,120,.12)}
-.tag-dead{color:var(--red);background:rgba(255,107,97,.12)}
-.tag-wolf{color:var(--red);background:rgba(255,107,97,.10)}
-.tag-good{color:var(--blue);background:rgba(106,167,255,.10)}
-.timeline{max-height:620px;overflow:auto}
-.entry{display:grid;grid-template-columns:42px 72px minmax(0,1fr);gap:8px;
-  padding:8px 12px;border-bottom:1px solid var(--border);font-size:.76rem}
+  padding:11px 14px;border-bottom:1px solid var(--border);font-weight:700;font-size:.78rem;
+  letter-spacing:.02em;text-transform:uppercase;color:var(--text-dim)}
+.count{font-family:var(--font-mono);font-size:.68rem;color:var(--text-dim);font-weight:500}
+
+/* ── Player Cards ── */
+.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:12px}
+.card{position:relative;padding:14px 13px;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--bg-card);transition:all .25s ease;border-left:3px solid var(--card-faction, transparent);
+  overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:linear-gradient(135deg,transparent 60%, var(--card-fade, transparent));
+  pointer-events:none;opacity:0;transition:opacity .4s}
+.card:hover{transform:translateY(-2px);border-color:var(--text-dim);box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.card:hover::before{opacity:1}
+.card.dead{opacity:.45;border-left-color:var(--dead-text)!important}
+.card.dead .name{text-decoration:line-through;text-decoration-color:var(--dead-text)}
+.card.dead .role-tag{color:var(--dead-text);border-color:var(--border-dim)}
+.card-dead-badge{position:absolute;top:6px;right:6px;font-size:.6rem;
+  color:var(--dead-text);font-family:var(--font-mono);opacity:.6;
+  animation:ghost-float 3s ease-in-out infinite}
+@keyframes ghost-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+
+.role-icon{font-size:1.6rem;line-height:1;margin-bottom:4px;display:block}
+.name{font-weight:700;font-size:.84rem;display:flex;align-items:center;gap:6px;
+  margin-bottom:3px}
+.role-tag{font-size:.68rem;color:var(--text-dim);display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:99px;border:1px solid var(--border-dim);font-weight:600}
+.tag-alive{color:var(--tag-color,var(--good));background:var(--tag-bg,var(--good-dim))}
+.tag-dead{color:var(--dead-text);background:transparent;border-style:dashed}
+.tag-wolf{color:var(--evil);background:var(--evil-dim)}
+.tag-good{color:var(--good);background:var(--good-dim)}
+
+/* ── Timeline ── */
+.timeline{max-height:540px;overflow-y:auto;scrollbar-width:thin;
+  scrollbar-thumb:var(--border);scrollbar-track:transparent}
+.timeline::-webkit-scrollbar{width:4px}
+.timeline::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+.entry{display:grid;grid-template-columns:40px 1fr;gap:8px;
+  padding:9px 14px;border-bottom:1px solid var(--border-dim);
+  font-size:.75rem;align-items:start;transition:background .3s;
+  animation:slide-in .35s ease-out both}
 .entry:last-child{border-bottom:none}
-.ts{color:var(--text-dim);font-size:.68rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.ev{font-weight:800;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em}
-.ev-speak{color:var(--green)}.ev-vote{color:var(--amber)}.ev-verdict{color:var(--red)}
-.ev-night{color:var(--amber)}.ev-over{color:var(--blue)}.ev-role{color:var(--blue)}
-.detail{min-width:0;color:var(--text);overflow-wrap:anywhere}
-.detail b{font-weight:800}
-.screens{display:grid;gap:8px;padding:10px;max-height:360px;overflow:auto}
-.screen{border:1px solid var(--border);border-radius:var(--radius);background:#0b0f14;overflow:hidden}
-.screen h3{padding:7px 9px;border-bottom:1px solid var(--border);font-size:.76rem}
-.screen pre{padding:9px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#b7c0ca;
-  font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.speak-log{padding:12px;max-height:500px;overflow:auto;font-size:.78rem;line-height:1.65}
-.speak-log h2{font-size:.95rem;margin-bottom:8px;color:var(--blue)}
-.speak-log h3{font-size:.82rem;margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);color:var(--amber)}
-.speak-log h4{font-size:.73rem;color:var(--text-dim);margin:8px 0 4px}
-.speak-log table{width:100%;border-collapse:collapse;margin:6px 0}
-.speak-log th{text-align:left;font-size:.68rem;color:var(--text-dim);padding:4px 8px;
-  border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.04em}
-.speak-log td{padding:4px 8px;border-bottom:1px solid rgba(51,64,77,.4);vertical-align:top;
-  word-break:break-word}
-.speak-log blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--amber);
-  background:rgba(225,182,83,.06);color:var(--amber);font-size:.76rem}
-.speak-log .empty-speak{color:var(--text-dim);font-style:italic;padding:20px 12px;text-align:center}
-.empty{padding:36px 12px;text-align:center;color:var(--text-dim);font-size:.82rem}
-@media(max-width:900px){
+@keyframes slide-in{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+.entry.new-flash{animation:flash-new .5s ease}
+@keyframes flash-new{0%{background:var(--day-glow)}100%{background:transparent}}
+
+.ts{font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);
+  line-height:2;white-space:nowrap}
+.ev{font-weight:800;font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;
+  width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;flex-shrink:0;font-size:.7rem}
+.ev-speak{color:var(--good);background:var(--good-dim)}
+.ev-vote{color:var(--day-accent);background:rgba(212,160,32,.10)}
+.ev-verdict{color:var(--evil);background:var(--evil-dim)}
+.ev-night{color:var(--night-accent);background:var(--night-glow);border-radius:4px!important}
+.ev-over{color:var(--night-accent);background:rgba(74,124,184,.15)}
+.ev-role{color:var(--text-dim);background:rgba(110,167,255,.08)}
+
+.detail{min-width:0;color:var(--text);overflow-wrap:anywhere;line-height:1.5}
+
+/* Speak event — chat bubble style */
+.speak-bubble{display:flex;flex-direction:column;gap:3px;padding:8px 12px;
+  border-radius:12px;border-left:3px solid var(--bubble-color,var(--border));
+  background:rgba(19,25,34,.5)}
+.speaker-name{font-weight:700;font-size:.72rem;color:var(--bubble-color,var(--text-dim))}
+.speaker-msg{font-size:.76rem;line-height:1.5}
+
+/* Vote event */
+.vote-row{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:.73rem}
+.vote-arrow{color:var(--day-accent)}
+
+/* Night event block */
+.night-block{background:rgba(10,14,20,.6);border-radius:var(--radius-sm);
+  padding:8px 12px;margin:4px 0;border-left:2px solid var(--night-accent)}
+.night-item{display:flex;align-items:center;gap:6px;font-size:.73rem;padding:3px 0;
+  border-bottom:1px solid var(--border-dim);line-height:1.4}
+.night-item:last-child{border-bottom:none}
+.night-icon{width:22px;text-align:center;flex-shrink:0}
+
+/* Game end banner */
+.end-banner{grid-column:1/-1;background:linear-gradient(135deg,
+  var(--good-dim), transparent 60%);padding:14px 18px;
+  text-align:center;border-radius:var(--radius);margin:6px 14px;
+  border:1px solid var(--good)}
+.end-banner.evil{background:linear-gradient(135deg,
+  var(--evil-dim), transparent 60%);border-color:var(--evil)}
+.end-banner strong{font-size:1.1rem}
+
+/* ── Screens Panel ── */
+.screens{display:grid;gap:8px;padding:10px;max-height:280px;overflow-y:auto}
+.screen{border:1px solid var(--border-dim);border-radius:var(--radius-sm);overflow:hidden;
+  background:#070a0f}
+.screen h3{padding:7px 10px;border-bottom:1px solid var(--border-dim);
+  font-size:.7rem;font-family:var(--font-mono);color:var(--night-accent);
+  background:rgba(10,14,20,.6);margin:0}
+.screen pre{padding:9px;max-height:150px;overflow:auto;
+  white-space:pre-wrap;color:#7ec699;font:11px/1.45 var(--font-mono);
+  scrollbar-width:thin;scrollbar-thumb:var(--border-dim)}
+
+/* ── Speak Log Panel ── */
+.speak-log{padding:14px 16px;max-height:480px;overflow-y:auto;font-size:.77rem;
+  line-height:1.65;scrollbar-width:thin;scrollbar-thumb:var(--border)}
+.speak-log h2{font-size:.95rem;margin-bottom:10px;color:var(--text-bright);
+  border-bottom:2px solid var(--phase-accent);padding-bottom:8px;
+  display:flex;align-items:center;gap:8px}
+.speak-log h3{font-size:.85rem;margin:18px 0 8px;padding-bottom:6px;
+  border-bottom:1px dashed var(--border);color:var(--phase-accent);
+  display:flex;align-items:center;gap:8px}
+.speak-log h4{font-size:.73rem;color:var(--text-dim);margin:10px 0 4px}
+
+/* Role table as compact cards */
+.role-cards{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.role-card{display:flex;align-items:center;gap:6px;padding:5px 10px;
+  background:var(--bg-elev);border:1px solid var(--border-dim);border-radius:var(--radius-sm);
+  font-size:.7rem;min-width:0}
+.role-card .rc-icon{font-size:1.1rem}
+.role-card .rc-name{font-weight:600}
+.role-card .rc-role{color:var(--text-dim);font-size:.64rem}
+
+/* Speak entries as chat messages */
+.msg{display:flex;gap:10px;padding:8px 0;animation:msg-in .3s ease both}
+@keyframes msg-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:.7rem;flex-shrink:0;font-weight:700;border:2px solid var(--msg-color,var(--border));
+  background:var(--bg-card);color:var(--msg-color,var(--text-dim))}
+.msg-body{flex:1;min-width:0}
+.msg-meta{font-size:.62rem;color:var(--text-dim);font-family:var(--font-mono);
+  white-space:nowrap;display:flex;align-items:center;gap:6px}
+.msg-text{font-size:.79rem;line-height:1.5;word-break:break-word}
+.msg-text b{color:var(--text-bright)}
+
+/* Day/Night separator */
+.day-sep{display:flex;align-items:center;gap:10px;margin:16px 0 10px;
+  color:var(--phase-accent);font-size:.78rem;font-weight:700}
+.day-sep::before,.day-sep::after{content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,transparent,var(--border),transparent)}
+
+/* Vote result block */
+.vote-result{margin:10px 0;padding:10px 14px;border-radius:var(--radius-sm);
+  background:rgba(207,48,48,.06);border:1px solid rgba(207,48,48,.15)}
+.vote-result .vr-exec{font-weight:700;color:var(--evil)}
+.vote-result .vr-safe{color:var(--text-dim)}
+
+/* Empty states */
+.empty{padding:40px 16px;text-align:center;color:var(--text-dim);font-size:.82rem}
+.empty-speak{padding:28px 16px;text-align:center;color:var(--text-dim);
+  font-style:italic;font-size:.82rem;display:flex;flex-direction:column;align-items:center;gap:8px}
+.empty-speak::before{content:'💬';font-size:1.8rem;opacity:.4}
+
+/* ── Token Usage Panel ── */
+.token-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:14px}
+.token-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 14px;border-bottom:1px solid var(--border);font-weight:700;font-size:.78rem;
+  letter-spacing:.02em;text-transform:uppercase;color:var(--text-dim)}
+.token-body{padding:14px 16px}
+.token-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
+.tk-metric{background:var(--bg-elev);border:1px solid var(--border-dim);border-radius:var(--radius-sm);
+  padding:10px 12px;text-align:center}
+.tk-metric .tk-label{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--text-dim);font-weight:600;display:block;margin-bottom:3px}
+.tk-metric .tk-val{font-family:var(--font-mono);font-size:.95rem;font-weight:700;
+  color:var(--text-bright)}
+.tk-metric .tk-sub{font-size:.6rem;color:var(--text-dim);margin-top:2px}
+.tk-highlight{color:var(--day-accent)}
+.tk-bar-area{display:flex;flex-direction:column;gap:6px}
+.tk-bar-row{display:flex;align-items:center;gap:8px;font-size:.7rem}
+.tk-bar-name{width:72px;flex-shrink:0;font-family:var(--font-mono);
+  font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tk-bar-track{flex:1;height:18px;background:var(--bg-elev);border-radius:9px;
+  overflow:hidden;position:relative;border:1px solid var(--border-dim)}
+.tk-bar-fill{height:100%;border-radius:9px;transition:width .6s ease;
+  background:linear-gradient(90deg,var(--night-accent),var(--day-accent));min-width:2px}
+.tk-bar-val{width:70px;flex-shrink:0;text-align:right;font-family:var(--font-mono);
+  font-size:.64rem;color:var(--text-dim)}
+.tk-cost{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;
+  background:rgba(212,160,32,.08);border:1px solid rgba(212,160,32,.2);
+  border-radius:99px;font-family:var(--font-mono);font-size:.68rem;color:var(--day-accent);
+  font-weight:600}
+@media(max-width:1050px){.token-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.token-grid{grid-template-columns:repeat(2,1fr)}
+  .tk-bar-name{width:56px}}
+
+/* Staggered entrance */
+.panel>.players,.panel>.timeline,.panel>.screens,.panel>.speak-log,.token-panel{opacity:0;animation:panel-in .5s ease forwards}
+.panel:nth-of-type(1)>.players{animation-delay:.05s}
+.panel:nth-of-type(2)>.timeline{animation-delay:.15s}
+.panel:nth-of-type(1)>.screens{animation-delay:.2s}
+.panel:nth-of-type(2)>.speak-log{animation-delay:.25s}
+.token-panel{animation-delay:.08s}
+@keyframes panel-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* Responsive */
+@media(max-width:1050px){
   .layout{grid-template-columns:1fr}
-  .overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .overview{grid-template-columns:repeat(2,1fr)}
 }
-@media(max-width:600px){
-  .app{padding:12px}
-  .header{align-items:flex-start;flex-direction:column}
-  .meta{justify-content:flex-start}
-  .players{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .entry{grid-template-columns:38px 60px minmax(0,1fr);gap:6px;padding:8px 10px}
+@media(max-width:640px){
+  .app{padding:10px}
+  .header{flex-direction:column;align-items:flex-start;gap:8px}
+  .overview{grid-template-columns:repeat(2,1fr)}
+  .players{grid-template-columns:repeat(2,1fr)}
+  .entry{grid-template-columns:32px 1fr;gap:6px;padding:7px 10px}
+  .metric strong{font-size:1rem}
 }
 </style>
 </head>
@@ -96,241 +288,435 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 <div class="app">
   <header class="header">
     <div class="title">
-      <h1>Werewolf Dashboard</h1>
-      <p id="run-id">等待游戏数据</p>
+      <h1><span style="color:var(--phase-accent)">●</span> Werewolf Command</h1>
+      <p id="run-id">等待连接...</p>
     </div>
     <div class="meta">
       <span class="status-dot" id="status-dot"></span>
-      <span class="badge badge-setup" id="phase-badge">INIT</span>
-      <span class="stat" id="round-info">Day -</span>
+      <div class="phase-indicator" id="phase-badge">
+        <span class="phase-icon" id="phase-icon">◉</span>
+        <span class="phase-label" id="phase-label">INIT</span>
+      </div>
+      <span class="stat" id="round-info">-</span>
       <span class="stat" id="updated-info">--:--</span>
     </div>
   </header>
 
-  <section class="overview" aria-label="游戏概览">
-    <div class="metric"><span>存活</span><strong id="alive-info">0/0</strong></div>
-    <div class="metric"><span>狼人</span><strong id="wolf-info">0</strong></div>
-    <div class="metric"><span>好人</span><strong id="good-info">0</strong></div>
-    <div class="metric"><span>事件</span><strong id="log-count">0</strong></div>
+  <section class="overview" aria-label="战局概览">
+    <div class="metric" style="--metric-color:var(--good)"><span>存活</span><strong id="alive-info">0/0</strong></div>
+    <div class="metric" style="--metric-color:var(--evil)"><span>狼人</span><strong id="wolf-info">?</strong></div>
+    <div class="metric" style="--metric-color:var(--night-accent)"><span>好人</span><strong id="good-info">?</strong></div>
+    <div class="metric" style="--metric-color:var(--day-accent)"><span>事件</span><strong id="log-count">0</strong></div>
+  </section>
+
+  <section class="token-panel" id="token-section" style="display:none">
+    <div class="token-head"><span>⚡ Token 用量</span><span class="tk-cost" id="tk-cost">--</span></div>
+    <div class="token-body">
+      <div class="token-grid">
+        <div class="tk-metric"><span class="tk-label">Input</span><span class="tk-val" id="tk-input">0</span><span class="tk-sub">tokens</span></div>
+        <div class="tk-metric"><span class="tk-label">Output</span><span class="tk-val tk-highlight" id="tk-output">0</span><span class="tk-sub">tokens</span></div>
+        <div class="tk-metric"><span class="tk-label">Cache Write</span><span class="tk-val" id="tk-cache-in">0</span><span class="tk-sub">tokens</span></div>
+        <div class="tk-metric"><span class="tk-label">Cache Read</span><span class="tk-val" id="tk-cache-read">0</span><span class="tk-sub">tokens</span></div>
+        <div class="tk-metric"><span class="tk-label">API 调用</span><span class="tk-val" id="tk-calls">0</span><span class="tk-sub">次</span></div>
+      </div>
+      <div class="tk-bar-area" id="tk-bars"></div>
+    </div>
   </section>
 
   <main class="layout">
     <div>
       <section class="panel">
         <div class="panel-head"><span>玩家</span><span class="count" id="player-count">0</span></div>
-        <div class="players" id="players"><div class="empty">暂无玩家</div></div>
+        <div class="players" id="players"><div class="empty">等待游戏数据</div></div>
       </section>
       <section class="panel" style="margin-top:12px">
-        <div class="panel-head"><span>玩家屏幕</span><span class="count" id="screen-count">0</span></div>
-        <div class="screens" id="screens"><div class="empty">暂无屏幕快照</div></div>
+        <div class="panel-head"><span>终端</span><span class="count" id="screen-count">0</span></div>
+        <div class="screens" id="screens"><div class="empty">暂无快照</div></div>
       </section>
     </div>
 
     <section class="panel">
-      <div class="panel-head"><span>事件日志</span><span class="count" id="cursor-info">offset 0</span></div>
+      <div class="panel-head"><span>事件流</span><span class="count" id="cursor-info">offset 0</span></div>
       <div class="timeline" id="log"><div class="empty">等待事件</div></div>
     </section>
 
     <section class="panel" style="margin-top:12px;grid-column:1/-1">
-      <div class="panel-head"><span>发言记录 (speak_log.md)</span><span class="count" id="speak-status">--</span></div>
+      <div class="panel-head"><span>发言记录</span><span class="count" id="speak-status">--</span></div>
       <div class="speak-log" id="speak-log"><div class="empty-speak">等待发言记录...</div></div>
     </section>
   </main>
 </div>
 
 <script>
-const ROLE_MAP={werewolf:'Wolf',villager:'Villager',seer:'Seer',witch:'Witch',hunter:'Hunter',guard:'Guard'};
-const ROLE_ICON={werewolf:'狼',villager:'民',seer:'预',witch:'巫',hunter:'猎',guard:'守'};
-const PHASE_MAP={SETUP:'准备',DAY_SPEAK:'白天·发言',DAY_VOTE:'白天·投票',NIGHT:'夜晚',ENDED:'结束'};
-const EV_MAP={role_assigned:'ROLE',speak:'SPEAK',vote:'VOTE',vote_result:'VERDICT',
-  wolf_action:'WOLF',seer_check:'SEER',guard_action:'GUARD',witch_action:'WITCH',
-  night_resolve:'NIGHT',hunter_shoot:'SHOOT',game_end:'END',day_start:'DAWN',night_start:'DUSK'};
+const ROLE_ICON={werewolf:'🐺',villager:'🙍',seer:'🔮',witch:'🦨',hunter:'🐫',guard:'🛡️'};
+const ROLE_CN={werewolf:'狼人',villager:'村民',seer:'预言家',witch:'女巫',hunter:'猎人',guard:'守卫'};
+const PHASE={SETUP:{icon:'◉',label:'准备',accent:'#6e7681',surface:'rgba(110,118,129,.1)',border:'rgba(110,118,129,.2)',glow:'rgba(110,118,129,.08)'},
+  DAY_SPEAK:{icon:'☀️',label:'白天·发言',accent:'var(--day-accent)',surface:'rgba(212,160,32,.08)',border:'rgba(212,160,32,.2)',glow:'var(--day-glow)'},
+  DAY_VOTE:{icon:'🗳️',label:'白天·投票',accent:'var(--day-accent)',surface:'rgba(212,160,32,.08)',border:'rgba(212,160,32,.2)',glow:'var(--day-glow)'},
+  NIGHT:{icon:'🌙',label:'夜晚',accent:'var(--night-accent)',surface:'rgba(74,124,184,.08)',border:'rgba(74,124,184,.2)',glow:'var(--night-glow)'},
+  ENDED:{icon:'✦',label:'结束',accent:'#6aa7ff',surface:'rgba(106,167,255,.08)',border:'rgba(106,167,255,.2)',glow:'rgba(106,167,255,.08)'}};
 const POLL=3000;
-let logOffset=0;
-let logEntries=[];
+let logOffset=0,logEntries=[],prevPhase='',knownDead=new Set();
 
 const $=id=>document.getElementById(id);
-function el(tag, cls, text){
-  const node=document.createElement(tag);
-  if(cls)node.className=cls;
-  if(text!==undefined)node.textContent=text;
-  return node;
+
+function el(tag,cls,text){
+  const n=document.createElement(tag);
+  if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;
 }
 async function api(url){
-  const resp=await fetch(url,{cache:'no-store'});
-  const data=await resp.json();
-  if(!resp.ok)throw new Error(data&&data.error?data.error:resp.statusText);
-  return data;
+  const r=await fetch(url,{cache:'no-store'});
+  const d=await r.json();if(!r.ok)throw new Error(d&&d.error?d.error:r.statusText);
+  return d;
 }
-function setOnline(ok, msg){
+function setOnline(ok,msg){
   $('status-dot').className='status-dot'+(ok?'':' off');
   $('updated-info').textContent=msg||new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  if(!ok){
-    $('phase-badge').textContent='离线';
-    $('phase-badge').className='badge badge-error';
+  if(!ok){$('phase-icon').textContent='✕';$('phase-label').textContent='离线';
+    document.documentElement.style.setProperty('--phase-accent','#cf3030');
   }
 }
-function teamOf(role){return role==='werewolf'?'wolf':'good'}
+
+// ── Phase theming ──
+function applyPhase(phase){
+  const p=PHASE[phase]||PHASE.SETUP;
+  document.documentElement.style.setProperty('--phase-accent',p.accent);
+  document.documentElement.style.setProperty('--phase-border',p.border);
+  document.documentElement.style.setProperty('--phase-surface',p.surface);
+  document.documentElement.style.setProperty('--phase-glow',p.glow);
+  $('phase-icon').textContent=p.icon;
+  $('phase-label').textContent=p.label;
+  if(phase!==prevPhase&&!['SETUP','ENDED'].includes(phase)){
+    document.querySelectorAll('.entry:not(.seen)').forEach((e,i)=>
+      e.style.animationDelay=(i*.04)+'s');
+  }
+  prevPhase=phase;
+}
+
+// ── State render ──
 function fmtState(state){
   if(!state)return;
   const ph=String(state.phase||'').toUpperCase();
-  const pb=$('phase-badge');
-  pb.textContent=PHASE_MAP[ph]||ph||'未知';
-  pb.className='badge'+(ph.includes('NIGHT')?' badge-night':ph.includes('DAY')?' badge-day':' badge-setup');
-  $('round-info').textContent='Day '+(state.round ?? '?');
-  $('run-id').textContent=state.run_id?'Run '+state.run_id:'等待游戏数据';
+  applyPhase(ph);
+  $('round-info').textContent='第 '+(state.round ?? '?')+' 轮';
+  $('run-id').textContent=state.run_id?'#'+state.run_id.slice(-8):'...';
 
-  const roles=state.roles||{};
-  const aliveSet=new Set(state.alive||[]);
+  const roles=state.roles||{},aliveSet=new Set(state.alive||[]);
   const players=Object.entries(roles);
-  const alive=players.filter(([name])=>aliveSet.has(name));
-  const wolves=alive.filter(([,info])=>teamOf(info.role)==='wolf').length;
-  const goods=alive.length-wolves;
+  const alive=players.filter(([n])=>aliveSet.has(n));
+  const wolves=alive.filter(([,r])=>r.role==='werewolf').length;
+  goods=alive.length-wolves;
   $('alive-info').textContent=alive.length+'/'+players.length;
   $('wolf-info').textContent=String(wolves);
   $('good-info').textContent=String(goods);
   $('player-count').textContent=players.length+' 人';
 
-  const wrap=$('players');
-  wrap.textContent='';
-  if(!players.length){
-    wrap.appendChild(el('div','empty','暂无玩家'));
-    return;
-  }
+  // Track new deaths for animation
+  players.forEach(([n,r])=>{
+    if(!r.alive && !knownDead.has(n)) knownDead.add(n);
+  });
+
+  const wrap=$('players');wrap.textContent='';
+  if(!players.length){wrap.appendChild(el('div','empty','暂无玩家'));return}
   for(const [name,info] of players){
-    const role=info.role||'?';
-    const ok=aliveSet.has(name);
+    const role=info.role||'?',ok=aliveSet.has(name),isWolf=role==='werewolf';
     const card=el('div','card'+(ok?'':' dead'));
-    card.appendChild(el('div','name',name));
-    card.appendChild(el('div','role',(ROLE_ICON[role]||'?')+' '+(ROLE_MAP[role]||role)));
-    const tags=el('div','tags');
-    tags.appendChild(el('span','tag '+(ok?'tag-alive':'tag-dead'),ok?'存活':'出局'));
-    tags.appendChild(el('span','tag '+(teamOf(role)==='wolf'?'tag-wolf':'tag-good'),teamOf(role)==='wolf'?'狼人阵营':'好人阵营'));
-    card.appendChild(tags);
+    if(!ok){const badge=el('span','card-dead-badge','☠ RIP');card.appendChild(badge);}
+
+    card.appendChild(el('span','role-icon',ROLE_ICON[role]||'?'));
+    const nameRow=el('div','name');
+    nameRow.appendChild(document.createTextNode(name));
+    card.appendChild(nameRow);
+
+    const tag=el('span','role-tag');
+    tag.appendChild(el('span','',ROLE_CN[role]||role));
+    tag.appendChild(el('span','tag '+(ok?(isWolf?'tag-wolf':'tag-good'):'tag-dead'),ok?'存活':'出局'));
+    card.appendChild(tag);
+
+    Object.assign(card.style,{ '--card-faction': isWolf?'var(--evil)':'var(--good)',
+      '--card-fade': ok?'transparent':'rgba(10,14,20,.4)' });
     wrap.appendChild(card);
   }
 }
-function part(parent,text,bold){
-  parent.appendChild(el(bold?'b':'span','',String(text ?? '')));
-}
+
+// ── Event detail node builder (visual redesign) ──
 function detailNode(e){
-  const d=el('span','detail');
   const ev=e.event;
-  if(ev==='speak'){part(d,e.player,true);part(d,': '+(e.msg||''));return d}
-  if(ev==='vote'){part(d,(e.voter||'?')+' -> '+(e.target||'-'));return d}
-  if(ev==='vote_result'){e.executed?(part(d,e.executed,true),part(d,' 被处决')):part(d,'平票/弃票');return d}
-  if(ev==='wolf_action'){part(d,'狼人刀向 ');part(d,e.target||'?',true);return d}
-  if(ev==='seer_check'){part(d,(e.player||'')+' 查验 ');part(d,e.target||'?',true);part(d,' -> '+(e.result||'?'));return d}
-  if(ev==='witch_action'){part(d,e.action==='save'?'使用解药':e.action==='poison'?'使用毒药':'不用');if(e.target){part(d,' ');part(d,e.target,true)}return d}
-  if(ev==='guard_action'){part(d,e.target?'守护 '+e.target:'空守');return d}
-  if(ev==='night_resolve'){
-    const p=[];
-    if(e.deaths&&e.deaths.length)p.push('死亡: '+e.deaths.join(', '));
-    if(e.saved)p.push('被救');
-    if(e.poisoned)p.push('中毒: '+e.poisoned);
-    if(e.guarded)p.push('守护: '+e.guarded);
-    part(d,p.length?p.join(' | '):'平安夜');return d;
+  // SPEAK → chat bubble
+  if(ev==='speak'){
+    const b=el('div','speak-bubble');
+    let color='var(--good)';
+    const roleInfo=getRoleColor(e.player);
+    if(roleInfo)color=roleInfo.color;
+    b.style.setProperty('--bubble-color',color);
+    b.style.setProperty('--msg-color',color);
+    b.innerHTML=`<span class="speaker-name">${esc(e.player||'?')}</span>`+
+      `<span class="speaker-msg">${esc(e.msg||'')}</span>`;
+    return b;
   }
-  if(ev==='hunter_shoot'){part(d,(e.hunter||'?')+' 开枪带走了 ');part(d,e.target||'?',true);return d}
-  if(ev==='game_end'){part(d,e.result||'',true);return d}
+  // VOTE → arrow row
+  if(ev==='vote'){
+    return el('div','vote-row',
+      `<span>${esc(e.voter||'?')}</span>`+
+      `<span class="vote-arrow">→</span>`+
+      `<span>${esc(e.target||'-')||'弃票'}</span>`);
+  }
+  // VERDICT → red highlight
+  if(ev==='vote_result'){
+    const cls='vote-result'+(e.executed?'':' vr-safe');
+    return el('div',cls,e.executed
+      ?`<span class="vr-exec">💀 ${esc(e.executed)} 被处决</span>`
+      :`<span class="vr-safe">平票 / 弃权，平安度过</span>`);
+  }
+  // NIGHT events → grouped block
+  if(['wolf_action','seer_check','guard_action','witch_action','night_resolve'].includes(ev)){
+    const items=[];
+    if(ev==='wolf_action')items.push({icon:'🔪',text:`刀向 ${esc(e.target||'?')}`});
+    else if(ev==='seer_check')items.push({icon:'👁',text:`${esc(e.player||'')} 验 ${esc(e.target||'?')} → ${esc(e.result||'?')}`});
+    else if(ev==='guard_action')items.push({icon:'🛡',text:e.target?`守护 ${esc(e.target)}`:`空守`});
+    else if(ev==='witch_action'){
+      const actMap={save:'使用解药',poison:'使用毒药',skip:'不用'};
+      items.push({icon:'🦨',text:actMap[e.action]||(e.action+(e.target?' → '+e.target:''))});
+    }else if(ev==='night_resolve'){
+      const ps=[];
+      if(e.deaths?.length)ps.push(`☠ 死亡: ${e.deaths.join(', ')}`);
+      if(e.saved)ps.push(`🦨 救人成功`);
+      if(e.poisoned)ps.push(`☠ 毒杀: ${e.poisoned}`);
+      if(e.guarded)ps.push(`🛡 守护: ${e.guarded}`);
+      items.push({icon:ps.length?'🌙':'✨',text:ps.length?ps.join(' | '):'平安夜'});
+    }
+    const block=el('div','night-block');
+    items.forEach(it=>{
+      const item=el('div','night-item');
+      item.innerHTML=`<span class="night-icon">${it.icon}</span><span>${it.text}</span>`;
+      block.appendChild(item);
+    });
+    return block;
+  }
+  // HUNTER SHOOT
+  if(ev==='hunter_shoot'){
+    return el('div','','<span style="color:var(--evil)">🔫</span> '+
+      `${esc(e.hunter||'?')} 开枪带走 ${esc(e.target||'?')}`);
+  }
+  // GAME END
+  if(ev==='game_end'){
+    const isGood=!e.result?.includes('狼');
+    return el('div','end-banner'+(isGood?'':' evil'),
+      `<strong>${esc(e.result||'')}</strong>`);
+  }
+  // ROLE ASSIGNED
   if(ev==='role_assigned'){
-    const roles=e.roles||{};
-    part(d,Object.entries(roles).map(([k,v])=>k+':'+v).join(', '));
-    return d;
+    const wrap=el('div','');
+    Object.entries(e.roles||{}).sort().forEach(([k,v])=>{
+      wrap.appendChild(el('span','',`${k}: ${v} `));
+    });
+    return wrap;
   }
-  part(d,Object.entries(e).filter(([k])=>!['event','ts','round','phase'].includes(k)).map(([k,v])=>k+'='+v).join(' '));
-  return d;
+  // Default
+  return el('span','detail',
+    Object.entries(e).filter(([k])=>!['event','ts','round','phase'].includes(k))
+      .map(([k,v])=>`${k}=${v}`).join(' '));
 }
+
+function getRoleColor(name){
+  const stateEl=$('state-data');
+  if(!stateEl)return null;
+  try{const s=JSON.parse(stateEl.textContent||'{}');
+    const r=s.roles?.[name];if(r)return {color:r.role==='werewolf'?'var(--evil)':'var(--good)',role:r.role};}catch(e){return null;}
+}
+
 function eventClass(ev){
-  if(ev==='speak')return'ev-speak';
-  if(ev==='vote')return'ev-vote';
-  if(ev==='vote_result')return'ev-verdict';
-  if(ev==='night_resolve'||ev==='night_start'||ev==='wolf_action')return'ev-night';
-  if(ev==='game_end')return'ev-over';
-  return'ev-role';
+  if(ev==='speak')return'ev-speak';if(ev==='vote')return'ev-vote';
+  if(ev==='vote_result')return'ver-verdict';
+  if(['night_resolve','night_start','wolf_action'].includes(ev))return'ev-night';
+  if(ev==='game_end')return'ev-over';return'ev-role';
 }
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── Log rendering ──
 function renderLogs(){
-  const c=$('log');
-  c.textContent='';
-  $('log-count').textContent=String(logEntries.length);
-  $('cursor-info').textContent='offset '+logOffset;
-  if(!logEntries.length){
-    c.appendChild(el('div','empty','等待事件'));
-    return;
-  }
-  for(const e of logEntries.slice().reverse()){
-    const row=el('div','entry');
+  const c=$('log');c.textContent='';
+  $('log-count').textContent=logEntries.length;$('cursor-info').textContent='offset '+logOffset;
+  if(!logEntries.length){c.appendChild(el('div','empty','等待事件'));return}
+  // Render in reverse (newest first)
+  const frag=document.createDocumentFragment();
+  logEntries.slice().reverse().forEach(e=>{
+    const row=el('div','entry seen');
     row.appendChild(el('span','ts',(e.ts||'').substring(11,16)||'--:--'));
     row.appendChild(el('span','ev '+eventClass(e.event),EV_MAP[e.event]||e.event||'?'));
-    row.appendChild(detailNode(e));
-    c.appendChild(row);
-  }
+    row.appendChild(detailNode(e));frag.appendChild(row);
+  });
+  c.appendChild(frag);
 }
+
+// ── Screens ──
 function renderScreens(screens){
-  const entries=Object.entries(screens||{});
-  const wrap=$('screens');
-  wrap.textContent='';
-  $('screen-count').textContent=entries.length+' 个';
-  if(!entries.length){
-    wrap.appendChild(el('div','empty','暂无屏幕快照'));
-    return;
-  }
-  for(const [name,text] of entries){
+  const wrap=$('screens');wrap.textContent='';
+  $('screen-count').textContent=Object.keys(screens).length+' 个';
+  if(!Object.keys(screens).length){wrap.appendChild(el('div','empty','暂无快照'));return}
+  for(const [name,text] of Object.entries(screens)){
     const box=el('article','screen');
     box.appendChild(el('h3','',name));
-    box.appendChild(el('pre','',text||''));
+    box.appendChild(el('pre','',text.replace(/</g,'&lt;'))); // basic HTML escape
     wrap.appendChild(box);
   }
 }
+
+// ── Speak Log (chat-style) ──
+function renderSpeakLog(data){
+  const c=$('speak-log');const st=$('speak-status');
+  if(!data||!data.exists||!data.content){
+    c.innerHTML='<div class="empty-speak"></div>';st.textContent='无';return;
+  }
+  st.textContent='已加载';
+
+  const frag=document.createDocumentFragment();
+  const lines=data.content.split('\n');
+  let inTable=false,currentRows=[],tableHeaderDone=false;
+
+  lines.forEach(line=>{
+    // Day/Night headers
+    if(line.startsWith('## 第')){
+      const isNight=line.includes('夜晚');
+      frag.appendChild(el('div','day-sep',
+        `<span>${isNight?'🌙':'☀️'} ${line.replace(/^## /,'').trim()}</span>`));
+      inTable=false;currentRows=[];tableHeaderDone=false;return;
+    }
+    // Role table header skip
+    if(line.includes('|---')){tableHeaderDone=true;return;}
+    // Table rows
+    if(line.startsWith('|') && line.endsWith('|')){
+      const cells=line.split('|').filter((c,i,a)=>i>0&&i<a.length-1).map(c=>c.trim());
+      if(cells.length>=3 && tableHeaderDone){
+        // Check if this is a speak or vote table
+        const hasContent=cells.some(c=>c.length>2 && !c.includes('---') && !c.startsWith('时间'));
+        if(hasContent){
+          // Determine type from context
+          const isSpeak=cells[0]?.includes('内容') || cells[1]?.includes('内容');
+          const isVote=cells[0]?.includes('投给') || cells[1]?.includes('投给');
+          if(isSpeak){
+            const time=cells[0]?.replace(/\*\*/g,'')||'';
+            const who=cells[1]?.split('(')[0]||'?';
+            const msg=cells[2]||'';
+            const isSilent=msg.includes('（沉默）');
+            frag.appendChild(el('div','msg'+
+              `<div class="msg-avatar">${who.charAt(0)}</div>`+
+              `<div class="msg-body">`+
+                `<div class="msg-meta">${time}</div>`+
+                `<div class="msg-text">${isSilent?'<em style="color:var(--text-dim)">'+msg+'</em>':msg}</div>`+
+              `</div>`));
+          } else if(isVote){
+            currentRows.push(cells);
+          }
+        }
+      }
+      return;
+    }
+    // Vote result
+    if(line.startsWith('>')){
+      frag.appendChild(el('div','vote-result',
+        line.replace(/^>\s*/,'').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')));
+      return;
+    }
+    // Night summary
+    if(line.startsWith('>')){
+      frag.appendChild(el('div','night-block',
+        `<div class="night-item"><span class="night-icon">🌙</span>`+
+        `<span>${line.replace(/^>\s*/,'')}</span></div>`));
+      return;
+    }
+    // Regular paragraph - only add non-empty non-header lines
+    const trimmed=line.trim();
+    if(trim && !trimmed.startsWith('#') && !trimmed.startsWith('|')){
+      frag.appendChild(el('p','',trimmed));
+    }
+  });
+
+  // Flush remaining vote rows
+  if(currentRows.length){
+    const voteBlock=el('div','vote-result');
+    voteBlock.innerHTML='<div style="font-size:.72rem;color:var(--text-dim);margin-bottom:6px">投票详情</div>'+
+      currentRows.map(r=>'<div style="font-size:.7rem;padding:2px 0;border-bottom:1px solid var(--border-dim)">'+
+        r[0]+' → '+(r[1]||'弃票')+'</div>').join('');
+    frag.appendChild(voteBlock);
+  }
+
+  c.appendChild(frag);
+}
+
+// Hidden element to store raw state JSON for role coloring
+const stateStore=el('span','');stateStore.id='state-data';
+stateStore.style.display='none';document.body.appendChild(stateStore);
+
+// ── Token Usage ──
+function fmtNum(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
+function renderUsage(data){
+  const sec=$('token-section');const bars=$('tk-bars');
+  if(!data||!data.total){sec.style.display='none';return;}
+  sec.style.display='';
+  const t=data.total;
+  $('tk-input').textContent=fmtNum(t.input_tokens);
+  $('tk-output').textContent=fmtNum(t.output_tokens);
+  $('tk-cache-in').textContent=fmtNum(t.cache_input);
+  $('tk-cache-read').textContent=fmtNum(t.cache_read);
+  $('tk-calls').textContent=String(t.api_calls||0);
+  $('tk-cost').textContent='≈$'+(t.cost_estimate_usd||0).toFixed(4);
+  // Per-player bars
+  bars.textContent='';
+  const players=data.players||{};
+  const entries=Object.entries(players).map(([n,u])=>({
+    name:n,total:(u.input_tokens||0)+(u.output_tokens||0),...u})).sort((a,b)=>b.total-a.total);
+  if(!entries.length){bars.innerHTML='<div class="empty" style="padding:12px">暂无数据</div>';return;}
+  const maxTotal=Math.max(...entries.map(e=>e.total),1);
+  entries.forEach(e=>{
+    const row=el('div','tk-bar-row');
+    row.appendChild(el('span','tk-bar-name',e.name));
+    const track=el('div','tk-bar-track');
+    const pct=Math.max((e.total/maxTotal)*100,1.5);
+    track.appendChild(el('div','tk-bar-fill','',''));
+    track.firstChild.style.width=pct+'%';
+    row.appendChild(track);
+    row.appendChild(el('span','tk-bar-val',fmtNum(e.total)));
+    bars.appendChild(row);
+  });
+}
+
+// ── Poll loop ──
 async function poll(){
   try{
-    const [state,logPage,screens,speakData]=await Promise.all([
+    const[state,logPage,screens,speakData,usageData]=await Promise.all([
       api('/api/state'),
       api('/api/log?offset='+logOffset),
-      api('/api/screens'),
-      api('/api/speak-log').catch(()=>({content:'',exists:false}))
+      api('/screens'),
+      api('/api/speak-log').catch(()=>({content:'',exists:false})),
+      api('/api/usage').catch(()=>null)
     ]);
+    // Store raw state for role coloring
+    stateStore.textContent=JSON.stringify(state);
     fmtState(state);
     if(Array.isArray(logPage.entries)&&logPage.entries.length){
+      // Mark new entries for flash animation
+      const newCount=logPage.entries.length;
       logEntries=logEntries.concat(logPage.entries);
       logOffset=logPage.next_offset;
       renderLogs();
+      // Flash newest entries
+      setTimeout(()=>{
+        const entries=$('.timeline .entry');
+        for(let i=0;i<Math.min(3,newCount);i++)
+          if(entries[i])entries[i].classList.add('new-flash');
+      },50);
     }else if(logPage.next_offset!==undefined){
-      logOffset=logPage.next_offset;
-      renderLogs();
+      logOffset=logPage.next_offset;renderLogs();
     }
     renderScreens(screens);
     renderSpeakLog(speakData);
+    renderUsage(usageData);
     setOnline(true);
   }catch(err){
     setOnline(false,err.message||'请求失败');
-  }finally{
-    setTimeout(poll,POLL);
-  }
-}
-function renderSpeakLog(data){
-  const c=$('speak-log');
-  const st=$('speak-status');
-  if(!data||!data.exists||!data.content){
-    c.innerHTML='<div class="empty-speak">暂无发言记录</div>';
-    st.textContent='无';
-    return;
-  }
-  st.textContent='已加载';
-  let html=data.content
-    .replace(/^# .*$/m,'<h2>$&</h2>')
-    .replace(/^## (.*$)/m,'<h3>$1</h3>')
-    .replace(/^### (.*$)/m,'<h4>$1</h4>')
-    .replace(/^> (.*)$/gm,'<blockquote>$1</blockquote>')
-    .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
-    .replace(/^(\|.*)$/gm,(m)=>{
-      if(m.includes('|---'))return '';
-      const cells=m.split('|').filter((c,i,a)=>i>0&&i<a.length-1).map(c=>c.trim());
-      const isHead=cells.every(c=>/^[A-Za-z一-鿿\s?:]+$/.test(c));
-      const tag=isHead?'th':'td';
-      return '<tr>'+cells.map(c=>`<${tag}>${c}</${tag}>`).join('')+'</tr>';
-    });
-  c.innerHTML=html;
+  }finally{setTimeout(poll,POLL);}
 }
 poll();
 </script>

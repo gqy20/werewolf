@@ -121,6 +121,7 @@ def cmd_run():
 
     # 构建 session → jsonl 路径映射（用于从日志提取回复）
     jsonl_map = build_jsonl_map(registry)
+    logger._registry = registry
     print(f"  📂 jsonl 映射: {len(jsonl_map)}/{len(players_raw)}")
 
     # 同步角色到 registry

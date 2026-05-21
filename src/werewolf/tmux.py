@@ -301,6 +301,32 @@ def extract_reply_from_jsonl(jsonl_path: Path,
     return best_text
 
 
+def extract_token_usage(jsonl_path: Path) -> dict:
+    """从 jsonl 日志中提取该实例的 token 用量统计"""
+    result = {"input_tokens": 0, "output_tokens": 0,
+            "cache_input": 0, "cache_read": 0,
+            "api_calls": 0}
+    if not jsonl_path or not jsonl_path.exists():
+        return result
+    try:
+        with open(jsonl_path, encoding="utf-8") as f:
+            for line in f:
+                d = json.loads(line)
+                if d.get("type") != "assistant":
+                    continue
+                msg = d.get("message", {})
+                u = msg.get("usage")
+                if isinstance(u, dict):
+                    result["input_tokens"] += u.get("input_tokens", 0)
+                    result["output_tokens"] += u.get("output_tokens", 0)
+                    result["cache_input"] += u.get("cache_creation_input_tokens", 0)
+                    result["cache_read"] += u.get("cache_read_input_tokens", 0)
+                result["api_calls"] += 1
+    except (json.JSONDecodeError, OSError):
+        pass
+    return result
+
+
 def build_jsonl_map(registry: dict) -> dict[str, Path]:
     """批量构建 session_name → jsonl_path 映射表"""
     result = {}
