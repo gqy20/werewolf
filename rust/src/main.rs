@@ -7,6 +7,9 @@
 use std::io::BufReader;
 
 fn main() {
+    // 初始化全局 bridge 状态（tokio runtime + rmux 连接池）
+    werewolf_bridge::BridgeState::init();
+
     let mut reader = BufReader::new(std::io::stdin());
     loop {
         let Some(line) = werewolf_bridge::server::read_request_line(&mut reader) else {

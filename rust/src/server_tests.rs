@@ -5,6 +5,7 @@
 use serde_json::json;
 use crate::protocol::{BridgeRequest, BridgeResponse, BridgeError};
 use crate::server::{dispatch_request, handle_request};
+use crate::bridge_state::BridgeState;
 
 // ── 请求解析 ─────────────────────────────────────
 
@@ -36,6 +37,7 @@ fn test_parse_missing_id() {
 
 #[test]
 fn test_dispatch_list_sessions_known_method() {
+    BridgeState::init();  // handler 需要 bridge state
     let req = BridgeRequest {
         id: 1,
         method: "list_sessions".into(),
@@ -61,6 +63,7 @@ fn test_dispatch_unknown_method_returns_error() {
 
 #[test]
 fn test_dispatch_send_text_valid_params() {
+    BridgeState::init();  // handler 需要 bridge state
     let req = BridgeRequest {
         id: 2,
         method: "send_text".into(),
@@ -118,6 +121,7 @@ fn test_error_response_includes_code_and_message() {
 
 #[test]
 fn test_handle_roundtrip_valid_request() {
+    BridgeState::init();  // handler 需要 bridge state
     let input = r#"{"id":7,"method":"list_sessions","params":{}}"#;
     let output = handle_request(input);
     let resp: BridgeResponse = serde_json::from_str(&output).unwrap();

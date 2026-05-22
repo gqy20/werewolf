@@ -11,9 +11,11 @@ pub mod protocol;
 pub mod session;
 pub mod pane;
 pub mod capture;
+pub mod bridge_state;
 pub mod server;
 
 pub use protocol::{BridgeRequest, BridgeResponse, BridgeError};
+pub use bridge_state::BridgeState;
 
 #[cfg(test)]
 mod protocol_tests;
@@ -23,5 +25,7 @@ mod session_tests;
 mod pane_tests;
 #[cfg(test)]
 mod capture_tests;
+#[cfg(test)]
+mod bridge_state_tests;
 #[cfg(test)]
 mod server_tests;
