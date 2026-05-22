@@ -1,0 +1,22 @@
+[package]
+name = "werewolf-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "JSON-RPC bridge between Python werewolf game and rmux SDK"
+
+[dependencies]
+rmux-sdk = "0.2"
+rmux-proto = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync"] }
+thiserror = "2"
+regex = "1"
+
+[[bin]]
+name = "werewolf-bridge"
+path = "rust/src/main.rs"
+
+[lib]
+name = "werewolf_bridge"
+path = "rust/src/lib.rs"
