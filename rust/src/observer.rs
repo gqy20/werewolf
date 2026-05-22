@@ -1,6 +1,8 @@
 //! ww-observer: 狼人杀 TUI 观战面板
 //!
-//! 实时流式显示 8 个玩家终端内容（基于 rmux output_stream）。
+//! 实时流式显示 8 个玩家终端内容（基于 rmux line_stream）。
+//! 架构参考 broadcast-demo / mini-zellij：每个 pane 一个独立 tokio task
+//! 通过 mpsc channel 向主 TUI 循环推送行数据。
 //!
 //! 用法:
 //!   cargo run --bin ww-observer
@@ -25,16 +27,12 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use rmux_sdk::{Rmux, SessionName, PaneRef, PaneOutputStart};
+use rmux_sdk::{Rmux, SessionName, PaneRef, PaneOutputStart, PaneLineItem};
+use tokio::sync::mpsc;
 
 const MAX_LINES: usize = 200;
 
-struct App {
-    should_quit: bool,
-    panes: Vec<PaneState>,
-    error_msg: Option<String>,
-}
-
+/// 每个 pane 的渲染状态
 struct PaneState {
     session_name: String,
     lines: VecDeque<String>,
@@ -42,9 +40,28 @@ struct PaneState {
     dirty: bool,
 }
 
+struct App {
+    should_quit: bool,
+    panes: Vec<PaneState>,
+    error_msg: Option<String>,
+    /// 从各 pane task 接收行数据的 channel
+    line_rx: mpsc::UnboundedReceiver<(usize, String)>,
+    line_tx: mpsc::UnboundedSender<(usize, String)>,
+    /// 各 pane 的 stream task 句柄（用于 cleanup / restart）
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
 impl App {
     fn new() -> Self {
-        Self { should_quit: false, panes: vec![], error_msg: None }
+        let (tx, rx) = mpsc::unbounded_channel();
+        Self {
+            should_quit: false,
+            panes: vec![],
+            error_msg: None,
+            line_rx: rx,
+            line_tx: tx,
+            tasks: vec![],
+        }
     }
 }
 
@@ -62,7 +79,8 @@ async fn main() -> anyhow::Result<()> {
     loop {
         if app.should_quit { break; }
 
-        poll_all_streams(&mut app).await;
+        // ── 零开销消费所有已到达的行数据 ──
+        drain_lines(&mut app);
 
         terminal.draw(|frame| render_app(frame, &app))?;
 
@@ -88,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 为每个 pane 创建一个独立的 line_stream task
 async fn init_streams(app: &mut App) {
     match do_init_streams(app).await {
         Ok(()) => app.error_msg = None,
@@ -107,63 +126,70 @@ async fn do_init_streams(app: &mut App) -> anyhow::Result<()> {
     let targets: Vec<&str> = if ww.is_empty() { sessions.iter().map(|n| n.as_str()).collect() }
                        else { ww.iter().map(|s| s.as_str()).collect() };
 
-    let mut panes = Vec::new();
-    for name in &targets {
+    let tx = app.line_tx.clone();
+    let mut panes = Vec::with_capacity(targets.len());
+    let mut tasks = Vec::with_capacity(targets.len());
+
+    for (idx, name) in targets.iter().enumerate() {
         let sn = SessionName::new(*name).map_err(|e| anyhow::anyhow!(e))?;
         let pr = PaneRef::in_first_window(sn, 0);
         let pane = rmux.pane(pr).await?;
-        let snap = pane.snapshot().await?;
-        let vis = snap.visible_lines();
-        let alive = !vis.is_empty() && !vis.iter().all(|l| l.trim().is_empty());
 
-        // 用 Oldest 模式订阅，回放已有内容 + 接收新增
-        let _stream = pane.output_stream_starting_at(PaneOutputStart::Oldest).await?;
+        // 用 Oldest 模式创建 line_stream — 自动回放历史 + 持续接收新增
+        let mut stream = match pane.line_stream_starting_at(PaneOutputStart::Oldest).await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
 
-        let mut buf = VecDeque::with_capacity(MAX_LINES);
-        for l in &vis { buf.push_back(l.clone()); }
+        let tx_clone = tx.clone();
+        let name_owned = name.to_string();
 
-        panes.push(PaneState { session_name: name.to_string(), lines: buf, is_alive: alive, dirty: true });
+        // 独立 task：阻塞式 next() 循环，通过 channel 推送数据
+        let handle = tokio::spawn(async move {
+            loop {
+                match stream.next().await {
+                    Ok(Some(PaneLineItem::Line { text })) => {
+                        if tx_clone.send((idx, text)).is_err() { break; }
+                    }
+                    Ok(Some(PaneLineItem::Lag(_))) => {}
+                    _ => break,
+                }
+            }
+        });
+
+        panes.push(PaneState {
+            session_name: name_owned,
+            lines: VecDeque::with_capacity(MAX_LINES),
+            is_alive: false,  // 首次收到数据时由 drain_lines 设为 true
+            dirty: false,
+        });
+        tasks.push(handle);
     }
+
     app.panes = panes;
+    app.tasks = tasks;
     Ok(())
 }
 
-fn close_all_streams(app: &mut App) { app.panes.clear(); }
+fn close_all_streams(app: &mut App) {
+    // abort 所有 stream task
+    for t in app.tasks.drain(..) { t.abort(); }
+    app.panes.clear();
+}
 
-async fn poll_all_streams(app: &mut App) {
-    if app.panes.is_empty() { return; }
-
-    let rmux = match Rmux::builder().default_timeout(Duration::from_secs(5)).connect_or_start().await {
-        Ok(r) => r,
-        Err(_) => return,
-    };
-
-    for ps in &mut app.panes {
-        let sn = match SessionName::new(ps.session_name.as_str()) { Ok(n) => n, Err(_) => continue };
-        let pr = PaneRef::in_first_window(sn, 0);
-        let pane = match rmux.pane(pr).await { Ok(p) => p, Err(_) => continue };
-        let mut stream = match pane.output_stream_starting_at(PaneOutputStart::Now).await { Ok(s) => s, Err(_) => continue };
-
-        while let Ok(chunks) = stream.poll_once().await {
-            for ch in &chunks {
-                use rmux_sdk::PaneOutputChunk;
-                match ch {
-                    PaneOutputChunk::Bytes { bytes, .. } => {
-                        let text = String::from_utf8_lossy(bytes);
-                        for line in text.lines() {
-                            if ps.lines.len() >= MAX_LINES { ps.lines.pop_front(); }
-                            ps.lines.push_back(line.to_string());
-                            ps.dirty = true;
-                        }
-                    }
-                    PaneOutputChunk::Lag(_) => { ps.dirty = true; }
-                    _ => {}
-                }
-            }
-            if chunks.is_empty() { break; }
+/// 非阻塞消费 channel 中所有已到达的行数据
+fn drain_lines(app: &mut App) {
+    while let Ok((idx, line)) = app.line_rx.try_recv() {
+        if let Some(ps) = app.panes.get_mut(idx) {
+            if ps.lines.len() >= MAX_LINES { ps.lines.pop_front(); }
+            ps.lines.push_back(line);
+            ps.dirty = true;
+            ps.is_alive = true;
         }
     }
 }
+
+// ═══════════════════════ 渲染层 ═══════════════════════
 
 fn render_app(frame: &mut Frame, app: &App) {
     let size = frame.area();
@@ -232,6 +258,13 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     let n = app.panes.len();
     let alive = app.panes.iter().filter(|p| p.is_alive).count();
     let dirty = app.panes.iter().filter(|p| p.dirty).count();
-    let s = format!(" {} pane | {} alive | {} dirty | stream | [r] reconnect [q] quit", n, alive, dirty);
-    frame.render_widget(Paragraph::new(Line::from(s)).style(Style::default().fg(Color::DarkGray)), area);
+    let active_tasks = app.tasks.iter().filter(|t| !t.is_finished()).count();
+    let s = format!(
+        " {} pane | {} alive | {} dirty | {} tasks active | [r] reconnect [q] quit",
+        n, alive, dirty, active_tasks
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(s)).style(Style::default().fg(Color::DarkGray)),
+        area,
+    );
 }
