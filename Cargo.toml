@@ -13,9 +13,19 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sy
 thiserror = "2"
 regex = "1"
 
+# TUI observer dependencies
+ratatui = "0.29"
+ratatui-rmux = "0.2"
+crossterm = "0.28"
+anyhow = "1"
+
 [[bin]]
 name = "werewolf-bridge"
 path = "rust/src/main.rs"
+
+[[bin]]
+name = "ww-observer"
+path = "rust/src/observer.rs"
 
 [lib]
 name = "werewolf_bridge"

@@ -1,6 +1,6 @@
 # 🐺 Werewolf — Claude Code 狼人杀 Game Master
 
-基于 **Claude Code 多实例** 的 AI 狼人杀游戏系统。每个玩家由一个独立的 Claude Code 实例扮演，通过 tmux 会话进行消息收发与行为控制，Game Master 协调完整的游戏流程。
+基于 **Claude Code 多实例** 的 AI 狼人杀游戏系统。每个玩家由一个独立的 Claude Code 实例扮演，通过 rmux 会话进行消息收发与行为控制，Game Master 协调完整的游戏流程。
 
 ## 特性
 
@@ -9,7 +9,8 @@
 - **标准游戏流程** — 白天发言 → 投票处决 → 夜晚行动（狼刀/守卫/预言家/女巫）→ 结算
 - **实时 Dashboard** — 内置 HTTP 监控面板，实时查看游戏状态、日志和玩家屏幕
 - **游戏日志** — 每局自动记录完整日志（JSONL）和最终报告（Markdown）
-- **tmux 跨实例控制** — 通过 Task UUID 探测机制实现会话发现与消息分发
+- **Rust Bridge** — 通过 `werewolf-bridge` JSON-RPC 二进制用 rmux-sdk 替代 tmux subprocess 调用，支持结构化 PaneSnapshot
+- **TUI 观战面板** — `ww-observer` 终端面板，同时显示 8 个玩家终端的实时内容
 
 ## 快速开始
 
@@ -17,8 +18,9 @@
 
 - Python >= 3.11
 - [uv](https://docs.astral.sh/uv/) 包管理器
-- [tmux](https://github.com/tmux/tmux/wiki) 终端复用器
+- [rmux](https://github.com/helvesec/rmux) 终端复用器 (可选，用于 TUI 观战)
 - [Claude Code CLI](https://claude.ai/code)
+- Rust toolchain (可选，用于编译 bridge 和 observer)
 
 ### 安装
 
@@ -26,6 +28,7 @@
 git clone <repo-url>
 cd werewolf
 uv sync
+cargo build              # 编译 werewolf-bridge + ww-observer
 ```
 
 ### 运行一局游戏
@@ -40,7 +43,10 @@ python -m werewolf run
 # 3. 查看实时状态
 python -m werewolf status
 
-# 4. 游戏结束后清理所有实例
+# 4. TUI 观战面板（终端内同时看 8 个玩家）
+cargo run --bin ww-observer
+
+# 5. 游戏结束后清理所有实例
 python -m werewolf kill
 ```
 
@@ -51,13 +57,14 @@ python -m werewolf kill
 | `bootstrap [N]` | 启动 N 个 Claude Code 实例（默认 8），自动发现 Task UUID |
 | `run` | 开始完整游戏循环，含 Dashboard |
 | `status` | 查看所有实例的存活/角色/连接状态 |
-| `kill` | 终止所有狼人杀 tmux 会话 |
+| `kill` | 终止所有狼人杀 rmux 会话 |
 | `send <name> <msg>` | 向指定实例发送调试消息 |
 
 ## 项目结构
 
 ```
 werewolf/
+├── Cargo.toml                # Rust crate 配置 (werewolf-bridge + ww-observer)
 ├── config.json              # 游戏配置（角色数量、规则参数）
 ├── pyproject.toml           # 项目配置 & 入口点
 ├── src/werewolf/
@@ -66,52 +73,86 @@ werewolf/
 │   ├── game.py              # 纯逻辑游戏引擎（无 I/O 依赖）
 │   ├── models.py            # 数据模型（Player, Team, VoteResult）
 │   ├── config.py            # 配置加载 & 注册表管理
-│   ├── tmux.py              # tmux 操作封装 + 消息解析 + UUID 发现
+│   ├── tmux.py              # tmux 操作封装（已 deprecated）
+│   ├── rmux_bridge.py       # Python 客户端（JSON-RPC → werewolf-bridge）
 │   ├── dashboard.py         # HTTP Dashboard 服务（实时监控 API）
 │   ├── logging/             # 游戏日志模块
 │   └── static/
 │       └── dashboard.html   # Dashboard 前端页面
+├── rust/                    # Rust 源码
+│   └── src/
+│       ├── lib.rs           # 库入口 (protocol/session/pane/capture/server/bridge_state)
+│       ├── main.rs          # werewolf-bridge 二进制入口 (stdin/stdout JSON-RPC)
+│       ├── observer.rs      # ww-observer TUI 观战面板二进制
+│       ├── protocol.rs      # JSON-RPC 类型定义
+│       ├── session.rs       # Session 管理 & 校验
+│       ├── pane.rs          # Pane 操作校验 & 格式化
+│       ├── capture.rs       # 结构化输出提取（替代启发式解析）
+│       ├── server.rs        # RPC 分发器（接入真实 rmux-sdk）
+│       └── bridge_state.rs  # Tokio runtime + Rmux 连接管理
 ├── data/runs/               # 每局游戏的存档（时间戳目录）
 │   └── <timestamp>/
 │       ├── game_state.json  # 游戏快照
 │       ├── game_log.jsonl   # 事件日志
 │       └── final_report.md  # 最终报告
 ├── tests/                   # 测试套件
+│   ├── test_rmux_bridge.py # Bridge 集成测试 (28 tests)
+│   └── test_game.py         # 游戏逻辑测试
 └── docs/                    # 设计文档
 ```
 
 ## 架构概览
 
 ```
-┌─────────────┐    tmux send/capture    ┌──────────────────┐
-│  Game Master │ ◄─────────────────────► │  ww-1 (Player 1) │
-│  (cli.py)    │                         │  Claude Code     │
-│              │ ◄─────────────────────► │  ww-2 (Player 2) │
-│              │                         │  ...             │
-│              │ ◄─────────────────────► │  ww-N (Player N) │
-└──────┬───────┘                         └──────────────────┘
-       │
-       │  GameLogger
-       ▼
-┌──────────────┐     HTTP API      ┌─────────────────┐
-│  game_state  │ ◄────────────────► │  Dashboard UI   │
-│  game_log    │    :9876          │  (浏览器访问)    │
-└──────────────┘                    └─────────────────┘
+Python (werewolf)              Rust (werewolf-bridge)         rmux daemon
+┌──────────────┐   JSON-RPC    ┌──────────────────┐   IPC   ┌─────────────┐
+│ rmux_bridge  │ ───stdin───▶  │ main.rs (server) │ ──────▶ │ sessions    │
+│ .py (client) │ ◀──stdout──  │ protocol.rs     │        │ panes       │
+│              │              │ session.rs       │        │ PTYs        │
+│ cli.py       │              │ pane.rs          │        └─────────────┘
+│ logging.py   │              │ capture.rs       │
+│              │              │ server.rs        │
+│              │              │ bridge_state.rs │
+└──────────────┘              └──────────────────┘
+
+                    ┌──────────────────────┐
+                    │  ww-observer (TUI)    │
+                    │  ratatui + rmux-sdk  │
+                    │   4×2 网格实时渲染   │
+                    │  q 退出 / r 刷新       │
+                    └──────────────────────┘
 ```
 
-**核心设计原则：**
+### Bridge 协议 (NDJSON-RPC)
+
+```
+Python ──{"id":1,"method":"list_sessions","params":{}}──▶ Rust
+Rust  ──{"id":1,"result":[...],"error":null}──▶ Python
+
+methods:
+  "send_text"     → {session, text}
+  "capture"       → {session, lines?} → {text, cursor, revision}
+  "wait_for"      → {session, text, timeout_sec?} → {}
+  "new_session"   → {name, cwd?} → {session_id}
+  "list_sessions" → {} → [{name}, ...]
+  "kill_session"  → {name} → {}
+  "session_exists" {name} → {exists: bool}
+```
+
+### 核心设计原则
 
 - **game.py** — 纯逻辑引擎，不依赖任何 I/O，可独立测试
-- **cli.py** — Game Master 控制层，编排白天/夜晚流程，通过 tmux 与 AI 实例交互
-- **tmux.py** — 基础设施层，封装 tmux 操作、UUID 发现算法、回复/投票解析
-- **dashboard.py** — 观察者层，提供只读 API 供前端消费
+- **cli.py** — Game Master 控制层，编排白天/夜晚流程，通过 bridge 与 AI 实例交互
+- **rmux_bridge.py** — 通过 JSON-RPC 调用 Rust bridge，替代原 tmux subprocess
+- **rust/** — 全部 TDD 开发，65 个 Rust 测试 + 28 个 Python 测试
+- **observer.rs** — 独立 TUI 二进制，通过 rmux-sdk 直接读取 PaneSnapshot 渲染
 
 ## 默认角色配置（8 人局）
 
 | 角色 | 数量 | 阵营 | 技能 |
 |------|------|------|------|
 | 🐺 狼人 | 2 | 狼人阵营 | 夜间共同选择击杀目标 |
-| 🙍‍⅌️ 村民 | 2 | 好人阵营 | 无特殊技能 |
+| 🙍‍♂️ 村民 | 2 | 好人阵营 | 无特殊技能 |
 | 🔮 预言家 | 1 | 好人阵营 | 夜间查验一名玩家身份 |
 | 🦨️ 女巫 | 1 | 好人阵营 | 一瓶解药 + 一瓶毒药 |
 | 🐫️ 猎人 | 1 | 好人阵营 | 死亡时可开枪带走一人 |
@@ -130,6 +171,11 @@ werewolf/
 ```bash
 # 运行测试
 uv run pytest
+cargo test                                # Rust 测试 (65 tests)
+python -m pytest tests/test_rmux_bridge.py   # Bridge 集成测试 (28 tests)
+
+# 编译 release
+cargo build --release
 
 # 安装为可执行命令
 uv pip install -e .
