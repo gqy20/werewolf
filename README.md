@@ -10,7 +10,8 @@
 - **实时 Dashboard** — 内置 HTTP 监控面板，实时查看游戏状态、日志和玩家屏幕
 - **游戏日志** — 每局自动记录完整日志（JSONL）和最终报告（Markdown）
 - **Rust Bridge** — 通过 `werewolf-bridge` JSON-RPC 二进制用 rmux-sdk 替代 tmux subprocess 调用，支持结构化 PaneSnapshot
-- **TUI 观战面板** — `ww-observer` 终端面板，同时显示 8 个玩家终端的实时内容
+- **TUI 观战面板** — `ww-observer` 终端面板，基于 `output_stream` 实时流式显示 8 个玩家终端内容
+- **智能游戏平衡** — 女巫药水持久化、狼人刀人历史去重、预言家查验去重、自适应超时参数
 
 ## 快速开始
 
@@ -83,7 +84,7 @@ werewolf/
 │   └── src/
 │       ├── lib.rs           # 库入口 (protocol/session/pane/capture/server/bridge_state)
 │       ├── main.rs          # werewolf-bridge 二进制入口 (stdin/stdout JSON-RPC)
-│       ├── observer.rs      # ww-observer TUI 观战面板二进制
+│       ├── observer.rs      # ww-observer TUI (output_stream 实时流)
 │       ├── protocol.rs      # JSON-RPC 类型定义
 │       ├── session.rs       # Session 管理 & 校验
 │       ├── pane.rs          # Pane 操作校验 & 格式化
@@ -118,8 +119,9 @@ Python (werewolf)              Rust (werewolf-bridge)         rmux daemon
                     ┌──────────────────────┐
                     │  ww-observer (TUI)    │
                     │  ratatui + rmux-sdk  │
-                    │   4×2 网格实时渲染   │
-                    │  q 退出 / r 刷新       │
+                    │  output_stream 实时流 │
+                    │  4×2 网格 / dirty高亮  │
+                    │  q 退出 / r 重连       │
                     └──────────────────────┘
 ```
 
@@ -145,7 +147,7 @@ methods:
 - **cli.py** — Game Master 控制层，编排白天/夜晚流程，通过 bridge 与 AI 实例交互
 - **rmux_bridge.py** — 通过 JSON-RPC 调用 Rust bridge，替代原 tmux subprocess
 - **rust/** — 全部 TDD 开发，65 个 Rust 测试 + 28 个 Python 测试
-- **observer.rs** — 独立 TUI 二进制，通过 rmux-sdk 直接读取 PaneSnapshot 渲染
+- **observer.rs** — 独立 TUI 二进制，通过 rmux-sdk `output_stream` 实时流式渲染 8 个玩家终端
 
 ## 默认角色配置（8 人局）
 
@@ -160,7 +162,7 @@ methods:
 
 ## 规则要点
 
-- **发言超时**: 60s / **投票超时**: 45s / **夜间行动超时**: 40s
+- **发言超时**: 180s / **投票超时**: 150s / **夜间行动超时**: 120s / **预热等待**: 180s
 - 平票时不处决，平安度过
 - 狼人数 ≥ 好人数时狼人胜利；狼人全灭时好人胜利
 - 女巫解药/毒药各限一次使用

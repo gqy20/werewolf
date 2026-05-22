@@ -52,14 +52,21 @@ def list_sessions(prefix: str = "") -> list[str]:
 # ── UUID 发现 ────────────────────────────────────────────
 
 def discover_all_uuids(sessions: list[str], timeout: int = 35,
-                       retries: int = 2) -> dict[str, str]:
+                       retries: int = 2, send_fn=None) -> dict[str, str]:
     """并行发现所有 session 的 Task UUID（带自动重试）
 
     原理: 给每个实例发带唯一标记的 TaskCreate 指令 →
           并行等待 → 通过 task 文件内容中的标记反查归属 → 返回 {session: uuid}
           未命中的 session 自动重试
+
+    Args:
+        send_fn: 可选的自定义发送函数，签名 (session, text) -> None。
+                 默认使用 tmux_send（subprocess 调用 tmux）。
+                 传入 RmuxBridge.send_text 即可切换到 bridge 模式。
     """
     import json as _json
+
+    _send = send_fn or tmux_send
 
     found: dict[str, str] = {}
     remaining = list(sessions)
@@ -73,8 +80,8 @@ def discover_all_uuids(sessions: list[str], timeout: int = 35,
         # 给未发现的实例发探测指令（每轮换不同标记避免缓存）
         for sess in remaining:
             marker = f"__probe_{attempt}_{sess}__"
-            tmux_send(sess,
-                      f"请立即用 TaskCreate 创建一个主题为'{marker}'的任务，不要做其他事")
+            _send(sess,
+                  f"请立即用 TaskCreate 创建一个主题为'{marker}'的任务，不要做其他事")
 
         # 轮询
         deadline = time.time() + timeout

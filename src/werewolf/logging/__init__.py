@@ -260,13 +260,29 @@ class GameLogger:
 
     def capture_screens(self, sessions: list[str],
                         session_to_name: dict[str, str]) -> None:
-        """截取所有存活玩家的 tmux 屏幕内容，供 Dashboard 展示"""
-        from werewolf.tmux import tmux_capture
+        """截取所有存活玩家的屏幕内容，供 Dashboard 展示"""
+        from werewolf.rmux_bridge import RmuxBridge
+        try:
+            bridge = RmuxBridge()
+        except FileNotFoundError:
+            # bridge 不可用时回退到 tmux
+            from werewolf.tmux import tmux_capture
+            screens: dict[str, str] = {}
+            for sess in sessions:
+                name = session_to_name.get(sess, sess)
+                try:
+                    text = tmux_capture(sess, 15)
+                    screens[name] = text
+                except Exception:
+                    screens[name] = "(capture failed)"
+            self._screens = screens
+            return
+
         screens: dict[str, str] = {}
         for sess in sessions:
             name = session_to_name.get(sess, sess)
             try:
-                text = tmux_capture(sess, 15)
+                text = bridge.capture_text(sess, 15)
                 screens[name] = text
             except Exception:
                 screens[name] = "(capture failed)"

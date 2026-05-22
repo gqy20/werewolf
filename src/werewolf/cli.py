@@ -8,20 +8,27 @@ from werewolf.config import load_config, load_registry, save_registry
 from werewolf.dashboard import start_dashboard
 from werewolf.game import Game, GamePhase
 from werewolf.logging import GameLogger, _now_iso
+from werewolf.rmux_bridge import RmuxBridge
 from werewolf.tmux import (
     build_jsonl_map,
+    discover_all_uuids,
     discover_task_uuid,
     extract_number,
     extract_reply,
     extract_reply_from_jsonl,
     extract_vote,
     find_jsonl_path,
-    kill_session,
-    list_sessions,
-    session_exists,
-    tmux_capture,
-    tmux_send,
 )
+
+# 模块级 bridge 单例
+_bridge: RmuxBridge | None = None
+
+
+def _get_bridge() -> RmuxBridge:
+    global _bridge
+    if _bridge is None:
+        _bridge = RmuxBridge()
+    return _bridge
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -43,28 +50,25 @@ def cmd_bootstrap(n: int = 8):
     print(f"🎮 启动 {n} 个 Claude Code 实例 (局: {arena_dir.name})...")
     registry = {"players": {}, "config": {"total": n}, "arena": str(arena_dir)}
 
+    bridge = _get_bridge()
     for i in range(1, n + 1):
         name = f"{prefix}{i}"
-        if session_exists(name):
+        if bridge.session_exists(name):
             print(f"  ⚠️  {name} 已存在，跳过")
             continue
         print(f"  [{i}/{n}] {name}")
-        import subprocess
-        subprocess.run(
-            ["tmux", "new-session", "-d", "-s", name, "-c", str(arena_dir),
-             f"{claude_cmd} player-{i}"],
-            capture_output=True,
-        )
+        bridge.new_session(name, cwd=str(arena_dir))
+        # 在 session 中启动 claude 命令
+        bridge.send_text(name, f"{claude_cmd} player-{i}")
 
     print("⏳ 等待初始化...")
     time.sleep(12)
 
     # 收集所有活跃的 session 名
-    active = [f"{prefix}{i}" for i in range(1, n + 1) if session_exists(f"{prefix}{i}")]
+    active = [f"{prefix}{i}" for i in range(1, n + 1) if bridge.session_exists(f"{prefix}{i}")]
 
     print(f"🔍 并行发现 {len(active)} 个 Task UUID ...")
-    from werewolf.tmux import discover_all_uuids
-    uuids = discover_all_uuids(active)
+    uuids = discover_all_uuids(active, send_fn=bridge.send_text)
 
     for i, name in enumerate(active):
         uuid = uuids.get(name, "")
@@ -85,8 +89,9 @@ def cmd_bootstrap(n: int = 8):
 
 
 def _broadcast(targets: list[str], msg: str):
+    b = _get_bridge()
     for t in targets:
-        tmux_send(t, msg)
+        b.send_text(t, msg)
 
 
 def cmd_run():
@@ -157,7 +162,7 @@ def cmd_run():
             f"{'='*40}\n"
             f"记住身份，不要泄露。回复'收到'。"
         )
-        tmux_send(sess, card)
+        _get_bridge().send_text(sess, card)
         print(f"  {dname}: {role_disp}")
 
     logger.save_state(game)
@@ -231,7 +236,7 @@ def cmd_run():
         for sess in speak_order:
             pname = session_to_name[sess]
             others = [session_to_name[s] for s in alive if s != sess]
-            tmux_send(sess,
+            _get_bridge().send_text(sess,
                       f"\n🗣️ 轮到你 ({pname})\n"
                       f"   请先读取 speak_log.md 了解当前局势\n"
                       f"   存活: {', '.join(others)}\n"
@@ -280,13 +285,13 @@ def cmd_run():
             if reply:
                 logger.append_speak(round_num, pname, rdisp, reply)
                 for t in target_others:
-                    tmux_send(t, f"💬 {pname}: 已发言 (详见 speak_log.md)")
+                    _get_bridge().send_text(t, f"💬 {pname}: 已发言 (详见 speak_log.md)")
                 print(f"  💬 {pname}: {reply[:80]}")
                 logger.log("speak", player=pname, msg=reply)
             else:
                 logger.append_speak(round_num, pname, rdisp, "（沉默）")
                 for t in target_others:
-                    tmux_send(t, f"💬 {pname}: （沉默）")
+                    _get_bridge().send_text(t, f"💬 {pname}: （沉默）")
 
         logger.capture_screens(alive, session_to_name)
 
@@ -311,7 +316,7 @@ def cmd_run():
                 vote_text = extract_reply_from_jsonl(jpath, since_ts=vote_before_ts)
                 pick = extract_vote(vote_text, candidates)
             else:
-                out = tmux_capture(sess, 10)
+                out = _get_bridge().capture_text(sess, 50)
                 pick = extract_vote(out, candidates)
             votes_raw[pname] = pick
             if pick:
@@ -346,9 +351,9 @@ def cmd_run():
                     if htargets:
                         hopts = "\n".join(f"   {i+1}. {session_to_name[s]}"
                                            for i, s in enumerate(htargets))
-                        tmux_send(dsess, f"🐫 开枪！\n{hopts}\n输入编号(0=不开):")
+                        _get_bridge().send_text(dsess, f"🐫 开枪！\n{hopts}\n输入编号(0=不开):")
                         time.sleep(30)
-                        hout = tmux_capture(dsess, 10)
+                        hout = _get_bridge().capture_text(dsess, 50)
                         hpick = extract_vote(hout,
                             [session_to_name[s] for s in htargets] + ["skip"])
                         if hpick and hpick != "skip":
@@ -390,12 +395,17 @@ def cmd_run():
         wolves = [s for s in alive if players_raw[s].get("role") == "werewolf"]
         wolf_target_name = None
         _wolf_candidates: list[str] = []
+        wolf_history = registry.get("wolf_kill_history", [])
         if wolves:
             goods = [s for s in alive if players_raw[s].get("role") != "werewolf"]
             _wolf_candidates = [session_to_name[s] for s in goods]
             gopts = "\n".join(f"   {i+1}. {n}" for i, n in enumerate(_wolf_candidates))
+            hist_hint = ""
+            if wolf_history:
+                recent = wolf_history[-3:]
+                hist_hint = f"\n📜 最近刀人记录: {', '.join(recent)}（建议换目标）\n"
             for w in wolves:
-                tmux_send(w, f"🐺 刀谁？\n{gopts}\n输入编号:\n"
+                _get_bridge().send_text(w, f"🐺 刀谁？{hist_hint}{gopts}\n输入编号:\n"
                     f"⚠️ 白天发言时必须伪装成好人：不要说'刀''杀''清理'等词，\n"
                     f"   假装在认真分析局势，可以适当引导投票方向。")
 
@@ -410,16 +420,21 @@ def cmd_run():
             _guard_candidates = [session_to_name[s] for s in guardables]
             gopts = "\n".join(f"   {i+1}. {n}" for i, n in enumerate(_guard_candidates))
             hint = "(不能连续守同一人)" if last_guarded else ""
-            tmux_send(guard, f"🛡️ 守护谁？{hint}\n{gopts}\n输入(0=不守):")
+            _get_bridge().send_text(guard, f"🛡️ 守护谁？{hint}\n{gopts}\n输入(0=不守):")
 
         # --- 预言家 ---
         seers = [s for s in alive if players_raw[s].get("role") == "seer"]
         _seer_candidates: list[str] = []
+        seer_history = registry.get("seer_check_history", {})
         for seer in seers:
             others = [s for s in alive if s != seer]
             _seer_candidates = [session_to_name[s] for s in others]
             oopts = "\n".join(f"   {i+1}. {n}" for i, n in enumerate(_seer_candidates))
-            tmux_send(seer, f"🔮 查验谁？\n{oopts}\n输入:")
+            checked_hint = ""
+            if seer_history:
+                items = ", ".join(f"{k}({v})" for k, v in seer_history.items())
+                checked_hint = f"\n📜 已查验: {items}（请选择未查验的人）\n"
+            _get_bridge().send_text(seer, f"🔮 查验谁？{checked_hint}{oopts}\n输入:")
 
         # 统一等待第一波完成
         print(f"  🌙 第一波行动(狼人+守卫+预言家)...")
@@ -428,17 +443,19 @@ def cmd_run():
         # 收集狼人结果
         if wolves:
             for w in wolves:
-                out = tmux_capture(w, 10)
+                out = _get_bridge().capture_text(w, 50)
                 pick = extract_vote(out, _wolf_candidates)
                 if pick:
                     wolf_target_name = pick
+                    wolf_history.append(pick)
+                    registry["wolf_kill_history"] = wolf_history[-5:]
                     print(f"  🐺 → {pick}")
                     logger.log("wolf_action", target=pick)
                     break
 
         # 收集守卫结果
         if guards:
-            out = tmux_capture(guards[0], 10)
+            out = _get_bridge().capture_text(guards[0], 50)
             pick = extract_vote(out, _guard_candidates + ["skip"])
             if pick and pick != "skip":
                 gsess = name_to_session.get(pick)
@@ -451,7 +468,7 @@ def cmd_run():
 
         # 收集预言家结果 & 私发查验反馈
         for seer in seers:
-            out = tmux_capture(seer, 10)
+            out = _get_bridge().capture_text(seer, 50)
             pick = extract_vote(out, _seer_candidates)
             if pick:
                 target_sess = name_to_session.get(pick)
@@ -459,8 +476,10 @@ def cmd_run():
                     trole = players_raw[target_sess].get("role", "?")
                     tteam = game.team_of(trole)
                     result_str = "🐺 狼人！" if tteam.name == "wolf" else "👼 好人"
-                    tmux_send(seer, f"🔮 {pick} → {result_str}")
+                    _get_bridge().send_text(seer, f"🔮 {pick} → {result_str}")
                     print(f"  🔮 {pick} → {result_str}")
+                    seer_history[pick] = "狼" if tteam.name == "wolf" else "好"
+                    registry["seer_check_history"] = seer_history
                     logger.log("seer_check", player=session_to_name[seer],
                                target=pick, result=result_str)
 
@@ -478,35 +497,42 @@ def cmd_run():
                 actions.append("毒人")
             actions.append("不用")
             act_str = ", ".join(f"{i+1}.{a}" for i, a in enumerate(actions))
+            save_count = rules.get("witch_save_count", 1)
+            poison_count = rules.get("witch_poison_count", 1)
             msg = f"🦨️ 女巫睁眼\n"
             if wolf_target_name:
                 msg += f"今晚 {wolf_target_name} 被袭\n"
-            msg += f"解药{'❌' if witch_save_used else '✅'} | 毒药{'❌' if witch_poison_used else '✅'}\n"
+            else:
+                msg += "今晚平安（无人被袭）\n"
+            msg += f"解药: {save_count - (1 if witch_save_used else 0)}/{save_count} | 毒药: {poison_count - (1 if witch_poison_used else 0)}/{poison_count}\n"
+            msg += f"⚠️ 解药仅{save_count}瓶，请谨慎使用，不要每轮都救\n"
             msg += f"{act_str}\n输入:"
-            tmux_send(witch, msg)
+            _get_bridge().send_text(witch, msg)
 
         print(f"  🌙 第二波行动(女巫)...")
         time.sleep(night_timeout)
 
         # 收集女巫结果
         for witch in witches:
-            out = tmux_capture(witch, 10)
+            out = _get_bridge().capture_text(witch, 50)
             choice = extract_number(out)
             if choice is not None and 0 < choice <= len(actions):
                 act = actions[choice - 1]
                 if act == "救人":
                     witch_save_used = True
+                    registry["witch_save_used"] = True
                     wolf_saved = True
                     print(f"  🦨️ 救人")
                     logger.log("witch_action", action="save")
                 elif act == "毒人":
                     witch_poison_used = True
+                    registry["witch_poison_used"] = True
                     poisons = [s for s in alive if s != witch]
                     pnames = [session_to_name[s] for s in poisons]
                     popts = "\n".join(f"   {i+1}. {n}" for i, n in enumerate(pnames))
-                    tmux_send(witch, f"毒谁？\n{popts}\n输入:")
+                    _get_bridge().send_text(witch, f"毒谁？\n{popts}\n输入:")
                     time.sleep(night_timeout)
-                    pout = tmux_capture(witch, 10)
+                    pout = _get_bridge().capture_text(witch, 50)
                     ppick = extract_vote(pout, pnames)
                     if ppick:
                         psess = next((s for s in players_raw
@@ -545,7 +571,7 @@ def cmd_run():
                     players_raw[dsess]["alive"] = False
                     dr = players_raw[dsess].get("role", "?")
                     dinfo.append(f"{d}({game.role_display(dr)})")
-                    tmux_send(dsess, "你已死亡，留遗言:")
+                    _get_bridge().send_text(dsess, "你已死亡，留遗言:")
                     time.sleep(20)
 
                     # 猎人开枪（无论被刀还是被投票处决都能开枪）
@@ -555,11 +581,11 @@ def cmd_run():
                             hopts = "\n".join(
                                 f"   {i+1}. {session_to_name[s]}"
                                 for i, s in enumerate(htargets))
-                            tmux_send(dsess,
+                            _get_bridge().send_text(dsess,
                                 f"🐫 开枪！你可以带走一个人:\n{hopts}\n"
                                 f"输入编号(0=不开枪):")
                             time.sleep(30)
-                            hout = tmux_capture(dsess, 10)
+                            hout = _get_bridge().capture_text(dsess, 50)
                             hpick = extract_vote(
                                 hout,
                                 [session_to_name[s] for s in htargets] + ["skip"])
@@ -632,23 +658,28 @@ def cmd_status():
         alive = "🟢" if pdata.get("alive") else "💀"
         role = pdata.get("role") or "—"
         uuid = (pdata.get("task_uuid") or "?")[:10]
-        ok = "✅" if session_exists(sess) else "❌"
+        ok = "✅" if _get_bridge().session_exists(sess) else "❌"
         print(f"  {ok} {sess:<14s} {name:<12s} {alive} {role:<10s} {uuid}")
 
 
 def cmd_kill():
-    sessions = list_sessions("ww-")
-    # 也清理可能带数字前缀的残留
+    b = _get_bridge()
+    sessions = b.list_sessions()
+    sessions = [s for s in sessions if isinstance(s, str) and "ww-" in s]
+    # list_sessions 返回的可能是 dict 或 string，统一处理
     if not sessions:
-        import subprocess as _sp
-        r = _sp.run(["tmux", "list-sessions", "-F", "#{session_name}"],
-                    capture_output=True, text=True)
-        sessions = [s for s in r.stdout.strip().split("\n") if "ww-" in s]
+        # 回退：尝试从原始列表中过滤
+        all_sess = b.list_sessions()
+        sessions = []
+        for s in all_sess:
+            name = s.get("name", s) if isinstance(s, dict) else s
+            if "ww-" in str(name):
+                sessions.append(name)
     if not sessions:
         print("没有狼人杀实例")
         return
     for s in sessions:
-        kill_session(s)
+        b.kill_session(s)
         print(f"  终止: {s}")
     reg_path = __import__("werewolf.config", fromlist=["REGISTRY_PATH"]).REGISTRY_PATH
     if reg_path.exists():
@@ -662,12 +693,12 @@ def cmd_send(name: str, msg: str):
         if sess == name or pdata.get("display_name") == name:
             target = sess
             break
-    if not target and session_exists(name):
+    if not target and _get_bridge().session_exists(name):
         target = name
     if not target:
         print(f"找不到: {name}")
         return
-    tmux_send(target, msg)
+    _get_bridge().send_text(target, msg)
     print(f"✅ → {target}: {msg}")
 
 

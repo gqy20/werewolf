@@ -27,10 +27,11 @@ class RmuxBridge:
 
     def _find_binary(self) -> str:
         """自动定位 werewolf-bridge 二进制"""
-        # 优先: 项目 target/debug 或 target/release
+        # 项目根目录 (werewolf/) 的 target 下
+        project_root = Path(__file__).resolve().parents[2]
         candidates = [
-            Path(__file__).parent / "target" / "debug" / "werewolf-bridge",
-            Path(__file__).parent / "target" / "release" / "werewolf-bridge",
+            project_root / "target" / "debug" / "werewolf-bridge",
+            project_root / "target" / "release" / "werewolf-bridge",
         ]
         for p in candidates:
             if p.exists():
@@ -40,9 +41,7 @@ class RmuxBridge:
         if which:
             return which
         raise FileNotFoundError(
-            "werewolf-bridge binary not found. "
-            "Run: cargo build --manifest-path ../../rmux/crates/rmux-sdk "
-            "(or install rmux and set up the bridge separately)"
+            "werewolf-bridge binary not found. Run: cargo build"
         )
 
     def _ensure_running(self) -> subprocess.Popen:
@@ -85,8 +84,16 @@ class RmuxBridge:
         return self._call("send_text", {"session": session, "text": text})
 
     def capture(self, session: str, lines: int = 50) -> dict:
-        """读取 session 的屏幕输出"""
+        """读取 session 的屏幕输出（返回结构化 dict）"""
         return self._call("capture", {"session": session, "lines": lines})
+
+    def capture_text(self, session: str, lines: int = 50) -> str:
+        """读取 session 屏幕输出，返回纯文本字符串（兼容原 tmux_capture 接口）"""
+        result = self.capture(session, lines)
+        text_lines = result.get("text", [])
+        if isinstance(text_lines, list):
+            return "\n".join(text_lines)
+        return str(text_lines) if text_lines else ""
 
     def wait_for(self, session: str, text: str, timeout_sec: int = 30) -> None:
         """等待 session 输出包含指定文本，超时返回 False"""

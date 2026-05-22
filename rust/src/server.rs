@@ -96,7 +96,10 @@ fn handle_send_text(id: u64, params: &serde_json::Value) -> BridgeResponse {
         let pane_ref = rmux_sdk::PaneRef::in_first_window(name, 0);
         let pane = rmux.pane(pane_ref).await
             .map_err(|e| e.to_string())?;
-        pane.send_text(&text).await
+        let kbd = pane.keyboard();
+        kbd.type_text(&text).await
+            .map_err(|e| e.to_string())?;
+        kbd.press("Enter").await
             .map_err(|e| e.to_string())
     }) {
         Ok(()) => pane::format_send_response(id),
