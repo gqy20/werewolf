@@ -17,6 +17,7 @@ ENV/
 
 # Dependencies
 uv.lock
+target/
 
 # Sensitive config (API keys, tokens)
 .env

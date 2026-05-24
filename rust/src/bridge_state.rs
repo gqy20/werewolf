@@ -3,7 +3,7 @@
 //! 每个 bridge 进程生命周期内共享一个 Rmux 连接，
 //! 所有 JSON-RPC handler 通过 block_on 调用异步 SDK。
 
-use std::sync::{OnceLock, Mutex};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use rmux_sdk::Rmux;
@@ -25,19 +25,27 @@ impl BridgeState {
                 .enable_all()
                 .build()
                 .expect("failed to create tokio runtime");
-            BridgeState { runtime, rmux: Mutex::new(None) }
+            BridgeState {
+                runtime,
+                rmux: Mutex::new(None),
+            }
         })
     }
 
     /// 获取或初始化 Rmux 连接（懒连接，返回 Arc 克隆）
     pub fn get_rmux(&self) -> Result<std::sync::Arc<Rmux>, String> {
-        let mut guard = self.rmux.lock().map_err(|e| format!("mutex poisoned: {e}"))?;
+        let mut guard = self
+            .rmux
+            .lock()
+            .map_err(|e| format!("mutex poisoned: {e}"))?;
         if guard.is_none() {
             let rmux = self
                 .runtime
-                .block_on(Rmux::builder()
-                    .default_timeout(Duration::from_secs(10))
-                    .connect_or_start())
+                .block_on(
+                    Rmux::builder()
+                        .default_timeout(Duration::from_secs(10))
+                        .connect_or_start(),
+                )
                 .map_err(|e| format!("rmux connect failed: {e}"))?;
             *guard = Some(std::sync::Arc::new(rmux));
         }

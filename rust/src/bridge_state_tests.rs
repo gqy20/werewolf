@@ -24,7 +24,10 @@ fn test_block_on_resolves_future() {
 
 #[test]
 fn test_block_on_handles_async_block() {
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
     let s = BridgeState::init();
     let counter = Arc::new(AtomicUsize::new(0));
     let c = counter.clone();
@@ -38,8 +41,8 @@ fn test_block_on_handles_async_block() {
 
 #[test]
 fn test_state_global_access() {
-    let _s = BridgeState::init();  // init first
-    let s = crate::bridge_state::state();  // global access
+    let _s = BridgeState::init(); // init first
+    let s = crate::bridge_state::state(); // global access
     let result: i32 = s.block_on(async { -7 });
     assert_eq!(result, -7);
 }

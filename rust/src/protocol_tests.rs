@@ -1,6 +1,6 @@
 //! Protocol 序列化/反序列化测试 — TDD: 先写测试，后写实现
+use crate::protocol::{BridgeError, BridgeRequest, BridgeResponse};
 use serde_json::json;
-use crate::protocol::{BridgeRequest, BridgeResponse, BridgeError};
 
 // ── Request 序列化 ──────────────────────────────────────
 

@@ -23,11 +23,19 @@ pub struct BridgeResponse {
 
 impl BridgeResponse {
     pub fn ok(id: u64, result: serde_json::Value) -> Self {
-        Self { id, result: Some(result), error: None }
+        Self {
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn error(err: BridgeError) -> Self {
-        Self { id: err.id, result: None, error: Some(err) }
+        Self {
+            id: err.id,
+            result: None,
+            error: Some(err),
+        }
     }
 }
 
@@ -42,7 +50,11 @@ pub struct BridgeError {
 
 impl BridgeError {
     pub fn new(code: i32, message: impl Into<String>) -> Self {
-        Self { id: 0, code, message: message.into() }
+        Self {
+            id: 0,
+            code,
+            message: message.into(),
+        }
     }
 
     pub fn id(mut self, id: u64) -> Self {

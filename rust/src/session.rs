@@ -4,8 +4,8 @@
 
 use std::path::PathBuf;
 
-use serde_json::json;
 use crate::protocol::{BridgeError, BridgeResponse};
+use serde_json::json;
 
 // ── 校验类型 ─────────────────────────────────────────────
 
@@ -29,7 +29,9 @@ pub struct CaptureCursor {
 
 // ── 参数校验 ─────────────────────────────────────────────
 
-pub fn validate_new_session(params: &serde_json::Value) -> Result<ValidatedNewSession, BridgeError> {
+pub fn validate_new_session(
+    params: &serde_json::Value,
+) -> Result<ValidatedNewSession, BridgeError> {
     let name = params
         .get("name")
         .and_then(|v| v.as_str())
@@ -43,12 +45,20 @@ pub fn validate_new_session(params: &serde_json::Value) -> Result<ValidatedNewSe
         ));
     }
 
-    let cwd = params.get("cwd").and_then(|v| v.as_str()).map(PathBuf::from);
+    let cwd = params
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from);
 
-    Ok(ValidatedNewSession { name: name.to_string(), cwd })
+    Ok(ValidatedNewSession {
+        name: name.to_string(),
+        cwd,
+    })
 }
 
-pub fn validate_pane_target(params: &serde_json::Value) -> Result<ValidatedPaneTarget, BridgeError> {
+pub fn validate_pane_target(
+    params: &serde_json::Value,
+) -> Result<ValidatedPaneTarget, BridgeError> {
     let session = params
         .get("session")
         .and_then(|v| v.as_str())
@@ -62,7 +72,9 @@ pub fn validate_pane_target(params: &serde_json::Value) -> Result<ValidatedPaneT
         ));
     }
 
-    Ok(ValidatedPaneTarget { session: session.to_string() })
+    Ok(ValidatedPaneTarget {
+        session: session.to_string(),
+    })
 }
 
 // ── 错误映射 ─────────────────────────────────────────────
@@ -90,10 +102,7 @@ pub fn map_sdk_error(err: &rmux_sdk::RmuxError, request_id: u64) -> BridgeError 
 // ── 响应格式化 ─────────────────────────────────────────────
 
 pub fn format_list_response(id: u64, sessions: &[SessionInfo]) -> BridgeResponse {
-    let arr: Vec<serde_json::Value> = sessions
-        .iter()
-        .map(|s| json!({"name": s.name}))
-        .collect();
+    let arr: Vec<serde_json::Value> = sessions.iter().map(|s| json!({"name": s.name})).collect();
     BridgeResponse::ok(id, json!(arr))
 }
 

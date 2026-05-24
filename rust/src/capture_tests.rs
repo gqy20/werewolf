@@ -2,7 +2,7 @@
 //!
 //! 替代 Python 的 extract_reply() heuristic，基于 PaneSnapshot 做智能文本提取。
 
-use crate::capture::{extract_reply, extract_vote, extract_number, ReplyExtractor};
+use crate::capture::{extract_number, extract_reply, extract_vote, ReplyExtractor};
 
 // ── extract_reply ────────────────────────────────────────
 
@@ -45,26 +45,14 @@ fn test_extract_reply_skips_noise_lines() {
 
 #[test]
 fn test_extract_reply_short_lines_ignored() {
-    let lines = vec![
-        "hi",
-        "ok",
-        "yes",
-        "这是一个足够长的有效回复内容",
-    ];
+    let lines = vec!["hi", "ok", "yes", "这是一个足够长的有效回复内容"];
     let result = extract_reply(&lines);
     assert!(result.contains("足够长"));
 }
 
 #[test]
 fn test_extract_reply_empty_for_all_noise() {
-    let lines = vec![
-        "❯",
-        "│",
-        "╭",
-        "请输入选项",
-        "qy113@host",
-        "Bypassed for 2s",
-    ];
+    let lines = vec!["❯", "│", "╭", "请输入选项", "qy113@host", "Bypassed for 2s"];
     let result = extract_reply(&lines);
     // 全是噪音行应返回空字符串
     assert!(result.is_empty() || result.len() <= 4);

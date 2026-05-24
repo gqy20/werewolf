@@ -7,25 +7,25 @@
 //! 4. capture — 结构化输出提取
 //! 5. server — stdin/stdout RPC 服务端
 
-pub mod protocol;
-pub mod session;
-pub mod pane;
-pub mod capture;
 pub mod bridge_state;
+pub mod capture;
+pub mod pane;
+pub mod protocol;
 pub mod server;
+pub mod session;
 
-pub use protocol::{BridgeRequest, BridgeResponse, BridgeError};
 pub use bridge_state::BridgeState;
+pub use protocol::{BridgeError, BridgeRequest, BridgeResponse};
 
-#[cfg(test)]
-mod protocol_tests;
-#[cfg(test)]
-mod session_tests;
-#[cfg(test)]
-mod pane_tests;
-#[cfg(test)]
-mod capture_tests;
 #[cfg(test)]
 mod bridge_state_tests;
 #[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
+mod pane_tests;
+#[cfg(test)]
+mod protocol_tests;
+#[cfg(test)]
 mod server_tests;
+#[cfg(test)]
+mod session_tests;

@@ -7,11 +7,11 @@
 
 use std::io::BufRead;
 
-use serde_json::json;
-use crate::protocol::{BridgeRequest, BridgeResponse, BridgeError};
-use crate::session;
-use crate::pane;
 use crate::bridge_state;
+use crate::pane;
+use crate::protocol::{BridgeError, BridgeRequest, BridgeResponse};
+use crate::session;
+use serde_json::json;
 
 /// 从 BufReader 读取一行 JSON（NDJSON 协议）
 pub fn read_request_line<R: BufRead>(reader: &mut R) -> Option<String> {
@@ -33,9 +33,7 @@ pub fn handle_request(input: &str) -> String {
                 serde_json::to_string(&error_response(0, "response serialization failed")).unwrap()
             })
         }
-        Err(_) => {
-            serde_json::to_string(&error_response(0, "parse error: invalid json")).unwrap()
-        }
+        Err(_) => serde_json::to_string(&error_response(0, "parse error: invalid json")).unwrap(),
     }
 }
 
@@ -91,16 +89,12 @@ fn handle_send_text(id: u64, params: &serde_json::Value) -> BridgeResponse {
     let session_name = v.session.clone();
     let text = v.text.clone();
     match state.block_on(async move {
-        let name = rmux_sdk::SessionName::new(&session_name)
-            .map_err(|e| e.to_string())?;
+        let name = rmux_sdk::SessionName::new(&session_name).map_err(|e| e.to_string())?;
         let pane_ref = rmux_sdk::PaneRef::in_first_window(name, 0);
-        let pane = rmux.pane(pane_ref).await
-            .map_err(|e| e.to_string())?;
+        let pane = rmux.pane(pane_ref).await.map_err(|e| e.to_string())?;
         let kbd = pane.keyboard();
-        kbd.type_text(&text).await
-            .map_err(|e| e.to_string())?;
-        kbd.press("Enter").await
-            .map_err(|e| e.to_string())
+        kbd.type_text(&text).await.map_err(|e| e.to_string())?;
+        kbd.press("Enter").await.map_err(|e| e.to_string())
     }) {
         Ok(()) => pane::format_send_response(id),
         Err(e) => sdk_err(id, e),
@@ -120,25 +114,29 @@ fn handle_capture(id: u64, params: &serde_json::Value) -> BridgeResponse {
     let session_name = v.session.clone();
     let lines_limit = v.lines;
     match state.block_on(async move {
-        let name = rmux_sdk::SessionName::new(&session_name)
-            .map_err(|e| e.to_string())?;
+        let name = rmux_sdk::SessionName::new(&session_name).map_err(|e| e.to_string())?;
         let pane_ref = rmux_sdk::PaneRef::in_first_window(name, 0);
-        let pane = rmux.pane(pane_ref).await
-            .map_err(|e| e.to_string())?;
-        let snapshot = pane.snapshot().await
-            .map_err(|e| e.to_string())?;
+        let pane = rmux.pane(pane_ref).await.map_err(|e| e.to_string())?;
+        let snapshot = pane.snapshot().await.map_err(|e| e.to_string())?;
         let all_lines = snapshot.visible_lines();
         let text = if let Some(n) = lines_limit {
             let n = n as usize;
-            if all_lines.len() > n { all_lines[all_lines.len() - n..].join("\n") }
-            else { all_lines.join("\n") }
+            if all_lines.len() > n {
+                all_lines[all_lines.len() - n..].join("\n")
+            } else {
+                all_lines.join("\n")
+            }
         } else {
             all_lines.join("\n")
         };
-        Ok::<_, String>((text, session::CaptureCursor {
-            row: snapshot.cursor.row,
-            col: snapshot.cursor.col,
-        }, snapshot.revision))
+        Ok::<_, String>((
+            text,
+            session::CaptureCursor {
+                row: snapshot.cursor.row,
+                col: snapshot.cursor.col,
+            },
+            snapshot.revision,
+        ))
     }) {
         Ok((text, cursor, rev)) => session::format_capture_response(id, &text, cursor, rev),
         Err(e) => sdk_err(id, e),
@@ -158,13 +156,10 @@ fn handle_wait_for(id: u64, params: &serde_json::Value) -> BridgeResponse {
     let session_name = v.session.clone();
     let text = v.text.clone();
     match state.block_on(async move {
-        let name = rmux_sdk::SessionName::new(&session_name)
-            .map_err(|e| e.to_string())?;
+        let name = rmux_sdk::SessionName::new(&session_name).map_err(|e| e.to_string())?;
         let pane_ref = rmux_sdk::PaneRef::in_first_window(name, 0);
-        let pane = rmux.pane(pane_ref).await
-            .map_err(|e| e.to_string())?;
-        pane.wait_for_text(&text).await
-            .map_err(|e| e.to_string())
+        let pane = rmux.pane(pane_ref).await.map_err(|e| e.to_string())?;
+        pane.wait_for_text(&text).await.map_err(|e| e.to_string())
     }) {
         Ok(()) => pane::format_wait_response(id),
         Err(e) => sdk_err(id, e),
@@ -184,14 +179,12 @@ fn handle_new_session(id: u64, params: &serde_json::Value) -> BridgeResponse {
     let name = v.name.clone();
     // new_session 总是返回 ok（name 已校验），即使 SDK 出错也返回错误响应
     match state.block_on(async move {
-        let session_name = rmux_sdk::SessionName::new(&name)
-            .map_err(|e| e.to_string())?;
+        let session_name = rmux_sdk::SessionName::new(&name).map_err(|e| e.to_string())?;
         let ensure = rmux_sdk::EnsureSession::named(session_name)
             .policy(rmux_sdk::EnsureSessionPolicy::CreateOrReuse)
             .detached(true)
             .size(rmux_sdk::TerminalSizeSpec::new(120, 32));
-        rmux.ensure_session(ensure).await
-            .map_err(|e| e.to_string())
+        rmux.ensure_session(ensure).await.map_err(|e| e.to_string())
     }) {
         Ok(_) => BridgeResponse::ok(id, json!({"name": v.name})),
         Err(e) => sdk_err(id, e),
@@ -208,7 +201,9 @@ fn handle_list_sessions(id: u64, _params: &serde_json::Value) -> BridgeResponse 
         Ok(names) => {
             let infos: Vec<session::SessionInfo> = names
                 .into_iter()
-                .map(|n| session::SessionInfo { name: n.to_string() })
+                .map(|n| session::SessionInfo {
+                    name: n.to_string(),
+                })
                 .collect();
             session::format_list_response(id, &infos)
         }
@@ -236,9 +231,10 @@ fn handle_kill_session(id: u64, params: &serde_json::Value) -> BridgeResponse {
     };
     let name_owned = name.to_string();
     match state.block_on(async move {
-        let session_name = rmux_sdk::SessionName::new(&name_owned)
-            .map_err(|e| e.to_string())?;
-        let session = rmux.session(session_name).await
+        let session_name = rmux_sdk::SessionName::new(&name_owned).map_err(|e| e.to_string())?;
+        let session = rmux
+            .session(session_name)
+            .await
             .map_err(|e| e.to_string())?;
         session.kill().await.map_err(|e| e.to_string())
     }) {
@@ -267,9 +263,10 @@ fn handle_session_exists(id: u64, params: &serde_json::Value) -> BridgeResponse 
     };
     let name_owned = name.to_string();
     match state.block_on(async move {
-        let session_name = rmux_sdk::SessionName::new(&name_owned)
-            .map_err(|e| e.to_string())?;
-        rmux.has_session(session_name).await.map_err(|e| e.to_string())
+        let session_name = rmux_sdk::SessionName::new(&name_owned).map_err(|e| e.to_string())?;
+        rmux.has_session(session_name)
+            .await
+            .map_err(|e| e.to_string())
     }) {
         Ok(exists) => session::format_exists_response(id, exists),
         Err(e) => sdk_err(id, e),

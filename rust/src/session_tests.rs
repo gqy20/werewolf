@@ -1,11 +1,10 @@
 //! Session 管理 TDD 测试
-use serde_json::json;
-use crate::protocol::{BridgeRequest, BridgeError};
+use crate::protocol::{BridgeError, BridgeRequest};
 use crate::session::{
-    validate_new_session, validate_pane_target, map_sdk_error,
-    format_list_response, format_exists_response, format_capture_response,
-    SessionInfo, CaptureCursor,
+    format_capture_response, format_exists_response, format_list_response, map_sdk_error,
+    validate_new_session, validate_pane_target, CaptureCursor, SessionInfo,
 };
+use serde_json::json;
 
 // ── 参数校验（纯逻辑）──────────────────────────────────
 
@@ -79,9 +78,7 @@ fn test_map_timeout_error() {
 #[test]
 fn test_map_generic_error() {
     let err = map_sdk_error(
-        &rmux_sdk::RmuxError::protocol(
-            rmux_proto::RmuxError::Server("daemon error".into()),
-        ),
+        &rmux_sdk::RmuxError::protocol(rmux_proto::RmuxError::Server("daemon error".into())),
         10,
     );
     assert_eq!(err.code, BridgeError::INTERNAL_ERROR);
@@ -92,8 +89,12 @@ fn test_map_generic_error() {
 #[test]
 fn test_format_session_list_response() {
     let sessions = vec![
-        SessionInfo { name: "ww-alice".into() },
-        SessionInfo { name: "ww-bob".into() },
+        SessionInfo {
+            name: "ww-alice".into(),
+        },
+        SessionInfo {
+            name: "ww-bob".into(),
+        },
     ];
     let resp = format_list_response(1, &sessions);
     assert_eq!(resp.id, 1);

@@ -2,10 +2,10 @@
 //!
 //! 测试 stdin/stdout 请求分发、错误处理、响应格式。
 
-use serde_json::json;
-use crate::protocol::{BridgeRequest, BridgeResponse, BridgeError};
-use crate::server::{dispatch_request, handle_request};
 use crate::bridge_state::BridgeState;
+use crate::protocol::{BridgeError, BridgeRequest, BridgeResponse};
+use crate::server::{dispatch_request, handle_request};
+use serde_json::json;
 
 // ── 请求解析 ─────────────────────────────────────
 
@@ -37,7 +37,7 @@ fn test_parse_missing_id() {
 
 #[test]
 fn test_dispatch_list_sessions_known_method() {
-    BridgeState::init();  // handler 需要 bridge state
+    BridgeState::init(); // handler 需要 bridge state
     let req = BridgeRequest {
         id: 1,
         method: "list_sessions".into(),
@@ -63,7 +63,7 @@ fn test_dispatch_unknown_method_returns_error() {
 
 #[test]
 fn test_dispatch_send_text_valid_params() {
-    BridgeState::init();  // handler 需要 bridge state
+    BridgeState::init(); // handler 需要 bridge state
     let req = BridgeRequest {
         id: 2,
         method: "send_text".into(),
@@ -104,7 +104,9 @@ fn test_response_serializes_to_valid_json() {
     assert_eq!(val["id"], 42);
     assert_eq!(val["result"]["status"], "ok");
     // ok 响应没有 error 字段或 error 为 null
-    assert!(!val.get("error").map_or(false, |e| e["code"].as_i64().unwrap_or(0) != 0));
+    assert!(!val
+        .get("error")
+        .map_or(false, |e| e["code"].as_i64().unwrap_or(0) != 0));
 }
 
 #[test]
@@ -121,7 +123,7 @@ fn test_error_response_includes_code_and_message() {
 
 #[test]
 fn test_handle_roundtrip_valid_request() {
-    BridgeState::init();  // handler 需要 bridge state
+    BridgeState::init(); // handler 需要 bridge state
     let input = r#"{"id":7,"method":"list_sessions","params":{}}"#;
     let output = handle_request(input);
     let resp: BridgeResponse = serde_json::from_str(&output).unwrap();
@@ -143,7 +145,7 @@ fn test_handle_roundtrip_invalid_json() {
 
 #[test]
 fn test_handle_roundtrip_missing_method() {
-    let input = r#"{"id":3,"params":{}}"#;  // 缺少 method
+    let input = r#"{"id":3,"params":{}}"#; // 缺少 method
     let output = handle_request(input);
     let resp: BridgeResponse = serde_json::from_str(&output).unwrap();
     // 缺少 method 可能解析失败或返回默认错误
