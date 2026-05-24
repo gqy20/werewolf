@@ -744,7 +744,29 @@ function renderUsage(data){
   });
 }
 
-// ── Poll loop ──
+function applyDashboardData(state,logPage,screens,speakData,usageData){
+  stateStore.textContent=JSON.stringify(state);
+  fmtState(state);
+  if(Array.isArray(logPage?.entries)&&logPage.entries.length){
+    const newCount=logPage.entries.length;
+    logEntries=logEntries.concat(logPage.entries);
+    logOffset=logPage.next_offset;
+    renderLogs();
+    setTimeout(()=>{
+      const entries=document.querySelectorAll('.timeline .entry');
+      for(let i=0;i<Math.min(3,newCount);i++)
+        if(entries[i])entries[i].classList.add('new-flash');
+    },50);
+  }else if(logPage?.next_offset!==undefined){
+    logOffset=logPage.next_offset;renderLogs();
+  }
+  updateScreenData(screens);
+  renderSpeakLog(speakData);
+  renderUsage(usageData);
+  setOnline(true);
+}
+
+// ── Realtime loop: SSE first, polling fallback ──
 async function poll(){
   try{
     const[state,logPage,screens,speakData,usageData]=await Promise.all([
@@ -754,33 +776,28 @@ async function poll(){
       api('/api/speak-log').catch(()=>({content:'',exists:false})),
       api('/api/usage').catch(()=>null)
     ]);
-    // Store raw state for role coloring
-    stateStore.textContent=JSON.stringify(state);
-    fmtState(state);
-    if(Array.isArray(logPage.entries)&&logPage.entries.length){
-      // Mark new entries for flash animation
-      const newCount=logPage.entries.length;
-      logEntries=logEntries.concat(logPage.entries);
-      logOffset=logPage.next_offset;
-      renderLogs();
-      // Flash newest entries
-      setTimeout(()=>{
-        const entries=$('.timeline .entry')||[];
-        for(let i=0;i<Math.min(3,newCount);i++)
-          if(entries[i])entries[i].classList.add('new-flash');
-      },50);
-    }else if(logPage.next_offset!==undefined){
-      logOffset=logPage.next_offset;renderLogs();
-    }
-    updateScreenData(screens);
-    renderSpeakLog(speakData);
-    renderUsage(usageData);
-    setOnline(true);
+    applyDashboardData(state,logPage,screens,speakData,usageData);
   }catch(err){
     setOnline(false,err.message||'请求失败');
   }finally{setTimeout(poll,POLL);}
 }
-poll();
+
+function startRealtime(){
+  if(!window.EventSource){poll();return;}
+  const es=new EventSource('/api/events?offset='+logOffset);
+  es.addEventListener('snapshot',ev=>{
+    try{
+      const data=JSON.parse(ev.data);
+      applyDashboardData(data.state,data.log,data.screens,data.speak_log,data.usage);
+    }catch(err){setOnline(false,err.message||'事件解析失败');}
+  });
+  es.onerror=()=>{
+    es.close();
+    setOnline(false,'事件流断开，切换轮询');
+    setTimeout(poll,1000);
+  };
+}
+startRealtime();
 </script>
 </body>
 </html>

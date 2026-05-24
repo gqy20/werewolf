@@ -1,6 +1,7 @@
 """Dashboard HTTP 服务 — 实时监控狼人杀对局"""
 import json
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+import time
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -29,6 +30,7 @@ def _make_handler(logger):
                 "/api/screens": self._api_screens,
                 "/api/speak-log": self._api_speak_log,
                 "/api/usage": self._api_usage,
+                "/api/events": self._api_events,
             }
             handler = routes.get(path)
             if handler:
@@ -100,26 +102,55 @@ def _make_handler(logger):
                 entries = [e for e in entries if e.get("ts", "") > since]
             self._json(entries)
 
-        def _api_screens(self, _query):
-            screens: dict[str, str] = {}
+        def _log_page(self, offset: int) -> dict:
+            logger = self._logger
+            entries = logger._read_log() if logger and logger.log_path.exists() else []
+            offset = min(max(0, offset), len(entries))
+            return {
+                "offset": offset,
+                "next_offset": len(entries),
+                "entries": entries[offset:],
+                "total": len(entries),
+            }
+
+        def _state_payload(self):
+            logger = self._logger
+            if not logger or not logger.state_path.exists():
+                return None
+            return json.loads(logger.state_path.read_text(encoding="utf-8"))
+
+        def _screens_payload(self) -> dict[str, str]:
             logger = self._logger
             if logger and hasattr(logger, "_screens"):
-                screens = dict(logger._screens)
-            self._json(screens)
+                return dict(logger._screens)
+            return {}
 
-        def _api_speak_log(self, _query):
+        def _speak_log_payload(self) -> dict:
             logger = self._logger
             if not logger or not logger.speak_log_path.exists():
-                self._json({"content": "", "exists": False})
-                return
-            content = logger.speak_log_path.read_text(encoding="utf-8")
-            self._json({"content": content, "exists": True})
+                return {"content": "", "exists": False}
+            return {
+                "content": logger.speak_log_path.read_text(encoding="utf-8"),
+                "exists": True,
+            }
+
+        def _api_screens(self, _query):
+            self._json(self._screens_payload())
+
+        def _api_speak_log(self, _query):
+            self._json(self._speak_log_payload())
 
         def _api_usage(self, _query):
-            logger = self._logger
-            if not logger:
+            usage = self._usage_payload()
+            if usage is None:
                 self._json({"error": "no logger"}, 404)
                 return
+            self._json(usage)
+
+        def _usage_payload(self):
+            logger = self._logger
+            if not logger:
+                return None
             registry = getattr(logger, "_registry", {})
             jsonl_map = build_jsonl_map(registry) if registry else {}
             per_player: dict[str, dict] = {}
@@ -132,15 +163,60 @@ def _make_handler(logger):
                 per_player[pname] = u
                 for k in total:
                     total[k] += u.get(k, 0)
-            # cost estimate (rough: input $3/M, output $15/M for Claude-like pricing)
             total["cost_estimate_usd"] = round(
                 (total["input_tokens"] + total["cache_input"]) / 1_000_000 * 3
                 + total["output_tokens"] / 1_000_000 * 15, 4)
-            self._json({
+            return {
                 "total": total,
                 "players": per_player,
                 "player_count": len(per_player),
-            })
+            }
+
+        def _events_payload(self, offset: int) -> dict:
+            return {
+                "state": self._state_payload(),
+                "log": self._log_page(offset),
+                "screens": self._screens_payload(),
+                "speak_log": self._speak_log_payload(),
+                "usage": self._usage_payload(),
+            }
+
+        def _api_events(self, query):
+            try:
+                offset = max(0, int(query.get("offset", ["0"])[0]))
+            except ValueError:
+                self._json({"error": "offset must be an integer"}, 400)
+                return
+            once = query.get("once", ["0"])[0] in ("1", "true", "yes")
+            interval_raw = query.get("interval", ["1"])[0]
+            try:
+                interval = max(0.2, float(interval_raw))
+            except ValueError:
+                interval = 1.0
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close" if once else "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
+            while True:
+                payload = self._events_payload(offset)
+                offset = payload["log"]["next_offset"]
+                body = (
+                    "event: snapshot\n"
+                    f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                ).encode("utf-8")
+                try:
+                    self.wfile.write(body)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                if once:
+                    self.close_connection = True
+                    return
+                time.sleep(interval)
 
         def log_message(self, format, *args):
             pass
@@ -158,7 +234,7 @@ def start_dashboard(logger, port=_DEFAULT_PORT, host="0.0.0.0"):
     import threading
 
     handler_cls = _make_handler(logger)
-    server = HTTPServer((host, port), handler_cls)
+    server = ThreadingHTTPServer((host, port), handler_cls)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     return server, f"http://{host}:{port}"

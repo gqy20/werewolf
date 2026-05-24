@@ -41,6 +41,9 @@ python -m werewolf bootstrap 8
 # 2. 开始游戏（自动启动 Dashboard）
 python -m werewolf run
 
+# 或：快速演示模式（短超时，不改写 registry）
+python -m werewolf demo
+
 # 3. 查看实时状态
 python -m werewolf status
 
@@ -55,7 +58,7 @@ python -m werewolf kill
 
 Dashboard 和 TUI 面板各自覆盖不同视角：
 
-- **Dashboard** — 浏览器中查看全局游戏状态、事件流、发言记录、Token 用量和玩家终端截屏。运行 `python -m werewolf run` 后打开 `http://127.0.0.1:9876`。
+- **Dashboard** — 浏览器中查看全局游戏状态、事件流、发言记录、Token 用量和玩家终端截屏。运行 `python -m werewolf run` 后打开 `http://127.0.0.1:9876`。前端优先使用 `/api/events` SSE 实时事件流，断开后回退到轮询。
 - **ww-observer** — 终端中实时查看 8 个玩家的 rmux 画面。默认是左侧玩家列表 + 右侧选中玩家大屏；按 `g` 可切到网格视图，一屏看所有玩家。
 
 `ww-observer` 快捷键：
@@ -76,6 +79,7 @@ Dashboard 和 TUI 面板各自覆盖不同视角：
 |------|------|
 | `bootstrap [N]` | 启动 N 个 Claude Code 实例（默认 8），自动发现 Task UUID |
 | `run` | 开始完整游戏循环，含 Dashboard |
+| `demo` | 使用短超时重置已有 registry 状态并启动一局本地演示 |
 | `status` | 查看所有实例的存活/角色/连接状态 |
 | `kill` | 终止所有狼人杀 rmux 会话 |
 | `send <name> <msg>` | 向指定实例发送调试消息 |
@@ -160,6 +164,23 @@ methods:
   "kill_session"  → {name} → {}
   "session_exists" {name} → {exists: bool}
 ```
+
+### Dashboard 实时接口
+
+`GET /api/events` 提供 Server-Sent Events，用于浏览器实时接收聚合状态：
+
+```
+event: snapshot
+data: {"state": {...}, "log": {...}, "screens": {...}, "speak_log": {...}, "usage": {...}}
+```
+
+常用参数：
+
+| 参数 | 说明 |
+|------|------|
+| `offset` | 日志游标，默认 `0` |
+| `interval` | SSE 刷新间隔秒数，默认 `1` |
+| `once=1` | 只返回一次 snapshot，便于测试 |
 
 ### 核心设计原则
 

@@ -129,6 +129,26 @@ class TestLogAPI:
         assert "msg" in speak_events[0]
 
 
+class TestEventsAPI:
+    """GET /api/events — SSE 实时事件流"""
+
+    def test_events_returns_sse_snapshot(self, dashboard_server):
+        resp = urllib.request.urlopen(f"{dashboard_server}/api/events?once=1", timeout=5)
+        body = resp.read().decode("utf-8")
+
+        assert resp.status == 200
+        assert resp.headers["Content-Type"].startswith("text/event-stream")
+        assert "event: snapshot\n" in body
+        assert "data: " in body
+
+        data_line = next(line for line in body.splitlines() if line.startswith("data: "))
+        payload = json.loads(data_line.removeprefix("data: "))
+        assert "state" in payload
+        assert "log" in payload
+        assert "screens" in payload
+        assert payload["log"]["next_offset"] >= 0
+
+
 class TestScreensAPI:
     """GET /api/screens — 玩家屏幕捕获"""
 
@@ -145,6 +165,12 @@ class TestStaticServing:
         status, body = _get(dashboard_server)
         assert status == 200
         assert isinstance(body, str)
+
+    def test_dashboard_html_uses_event_source(self, dashboard_server):
+        status, body = _get(dashboard_server)
+        assert status == 200
+        assert "EventSource" in body
+        assert "/api/events" in body
 
 
 class TestGameLoggerIntegration:

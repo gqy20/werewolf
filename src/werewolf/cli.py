@@ -2,6 +2,7 @@
 import json
 import sys
 import time
+import copy
 from pathlib import Path
 
 from werewolf.config import load_config, load_registry, save_registry
@@ -31,6 +32,39 @@ def _get_bridge() -> RmuxBridge:
     return _bridge
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+DEMO_RULE_OVERRIDES = {
+    "warmup_sec": 1,
+    "speak_timeout_sec": 12,
+    "min_speak_wait_sec": 0,
+    "speak_poll_interval_sec": 6,
+    "vote_timeout_sec": 8,
+    "night_action_timeout_sec": 8,
+}
+
+
+def build_demo_config(config: dict) -> dict:
+    """返回适合本地演示的一局短超时配置，不修改原对象。"""
+    demo = copy.deepcopy(config)
+    demo.setdefault("rules", {}).update(DEMO_RULE_OVERRIDES)
+    return demo
+
+
+def reset_registry_for_demo(registry: dict) -> dict:
+    """重置 registry 中的对局状态，让已有 ww-* 会话可直接开新演示局。"""
+    demo = copy.deepcopy(registry)
+    for pdata in demo.get("players", {}).values():
+        pdata["alive"] = True
+        pdata["role"] = None
+    for key in (
+        "wolf_kill_history",
+        "seer_check_history",
+        "witch_save_used",
+        "witch_poison_used",
+        "last_guarded",
+    ):
+        demo.pop(key, None)
+    return demo
 
 
 def cmd_bootstrap(n: int = 8):
@@ -94,16 +128,22 @@ def _broadcast(targets: list[str], msg: str):
         b.send_text(t, msg)
 
 
-def cmd_run():
-    registry = load_registry()
+def cmd_run(config_override: dict | None = None,
+            registry_override: dict | None = None,
+            persist_registry: bool = True):
+    registry = registry_override if registry_override is not None else load_registry()
     players_raw = registry.get("players", {})
     if not players_raw:
         print("❌ 没有注册的实例。先运行: python -m werewolf bootstrap")
         sys.exit(1)
 
-    cfg = load_config()
+    cfg = config_override if config_override is not None else load_config()
     rules = cfg.get("rules", {})
     game = Game(config=cfg)
+
+    def _save_registry(data: dict):
+        if persist_registry:
+            save_registry(data)
 
     # 从 registry 构建玩家列表
     names = [p["display_name"] for p in players_raw.values()]
@@ -172,7 +212,7 @@ def cmd_run():
     # 初始化发言记录文件
     logger.init_speak_log(game.players, cfg)
 
-    save_registry(registry)
+    _save_registry(registry)
     # 等待实例完成冷启动（Claude Code 首次响应需要 3-7 分钟初始化）
     warmup = rules.get("warmup_sec", 180)
     print(f"  ⏳ 等待实例预热 ({warmup}s)...")
@@ -368,7 +408,7 @@ def cmd_run():
         else:
             _broadcast(alive, "\n📊 平票/弃票，平安度过。")
 
-        save_registry(registry)
+        _save_registry(registry)
 
         # ── 夜晚 ──
         alive = [s for s in players_raw if players_raw[s].get("alive", True)]
@@ -560,7 +600,7 @@ def cmd_run():
             )
 
         registry["last_guarded"] = guarded_tonight
-        save_registry(registry)
+        _save_registry(registry)
 
         # 死讯
         alive = [s for s in players_raw if players_raw[s].get("alive", True)]
@@ -642,7 +682,14 @@ def cmd_run():
         status = "✅" if pdata.get("alive") else "💀"
         rd = game.role_display(role)
         print(f"  {pdata['display_name']:12s} {rd:20s} {status}")
-    save_registry(registry)
+    _save_registry(registry)
+
+
+def cmd_demo():
+    """用短超时重置已有 registry 并启动一局演示。"""
+    cfg = build_demo_config(load_config())
+    registry = reset_registry_for_demo(load_registry())
+    cmd_run(config_override=cfg, registry_override=registry, persist_registry=False)
 
 
 def cmd_status():
@@ -715,6 +762,8 @@ def main():
         cmd_bootstrap(n)
     elif cmd == "run":
         cmd_run()
+    elif cmd == "demo":
+        cmd_demo()
     elif cmd == "status":
         cmd_status()
     elif cmd == "kill":
@@ -733,6 +782,7 @@ __doc__ = """werewolf — Claude Code 狼人杀 Game Master
 用法:
   python -m werewolf bootstrap [N]   启动 N 个实例（默认 8）
   python -m werewolf run             开始游戏
+  python -m werewolf demo            用短超时启动一局演示
   python -m werewolf status          查看状态
   python -m werewolf kill            终止所有实例
   python -m werewolf send <n> <msg>  调试发消息
