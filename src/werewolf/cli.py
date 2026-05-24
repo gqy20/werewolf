@@ -243,8 +243,9 @@ def cmd_run():
                       f"   发表看法（简短）:")
 
         # 轮询等待：每隔一段时间检查是否所有人都有回复
-        max_wait = max(speak_timeout * 2, 300)  # 至少 5 分钟
-        poll_interval = 30
+        min_speak_wait = rules.get("min_speak_wait_sec", 300)
+        max_wait = max(speak_timeout * 2, min_speak_wait)
+        poll_interval = rules.get("speak_poll_interval_sec", 30)
         elapsed = 0
         print(f"  ⏳ 等待发言 (最多 {max_wait}s)...")
 

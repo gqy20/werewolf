@@ -10,7 +10,7 @@
 - **实时 Dashboard** — 内置 HTTP 监控面板，实时查看游戏状态、日志和玩家屏幕
 - **游戏日志** — 每局自动记录完整日志（JSONL）和最终报告（Markdown）
 - **Rust Bridge** — 通过 `werewolf-bridge` JSON-RPC 二进制用 rmux-sdk 替代 tmux subprocess 调用，支持结构化 PaneSnapshot
-- **TUI 观战面板** — `ww-observer` 终端面板，基于 `output_stream` 实时流式显示 8 个玩家终端内容
+- **TUI 观战面板** — `ww-observer` 终端面板，基于 rmux `render_stream` + `PaneSnapshot` 实时显示 8 个玩家终端画面
 - **智能游戏平衡** — 女巫药水持久化、狼人刀人历史去重、预言家查验去重、自适应超时参数
 
 ## 快速开始
@@ -51,6 +51,25 @@ cargo run --bin ww-observer
 python -m werewolf kill
 ```
 
+### 观战界面
+
+Dashboard 和 TUI 面板各自覆盖不同视角：
+
+- **Dashboard** — 浏览器中查看全局游戏状态、事件流、发言记录、Token 用量和玩家终端截屏。运行 `python -m werewolf run` 后打开 `http://127.0.0.1:9876`。
+- **ww-observer** — 终端中实时查看 8 个玩家的 rmux 画面。默认是左侧玩家列表 + 右侧选中玩家大屏；按 `g` 可切到网格视图，一屏看所有玩家。
+
+`ww-observer` 快捷键：
+
+| 按键 | 说明 |
+|------|------|
+| `1`-`8` | 选择玩家并进入聚焦视图 |
+| `←` / `↑` | 上一个玩家 |
+| `→` / `↓` | 下一个玩家 |
+| `f` / `Enter` | 聚焦选中玩家 |
+| `g` | 网格视图，一屏显示所有玩家 |
+| `r` | 重连并刷新所有玩家 stream |
+| `q` / `Esc` | 退出 |
+
 ## 命令参考
 
 | 命令 | 说明 |
@@ -84,7 +103,7 @@ werewolf/
 │   └── src/
 │       ├── lib.rs           # 库入口 (protocol/session/pane/capture/server/bridge_state)
 │       ├── main.rs          # werewolf-bridge 二进制入口 (stdin/stdout JSON-RPC)
-│       ├── observer.rs      # ww-observer TUI (output_stream 实时流)
+│       ├── observer.rs      # ww-observer TUI (render_stream + PaneSnapshot)
 │       ├── protocol.rs      # JSON-RPC 类型定义
 │       ├── session.rs       # Session 管理 & 校验
 │       ├── pane.rs          # Pane 操作校验 & 格式化
@@ -119,9 +138,10 @@ Python (werewolf)              Rust (werewolf-bridge)         rmux daemon
                     ┌──────────────────────┐
                     │  ww-observer (TUI)    │
                     │  ratatui + rmux-sdk  │
-                    │  output_stream 实时流 │
-                    │  4×2 网格 / dirty高亮  │
-                    │  q 退出 / r 重连       │
+                    │  render_stream 触发   │
+                    │  PaneSnapshot 渲染    │
+                    │  聚焦/网格双视图       │
+                    │  数字选人 / r 重连     │
                     └──────────────────────┘
 ```
 
@@ -147,7 +167,7 @@ methods:
 - **cli.py** — Game Master 控制层，编排白天/夜晚流程，通过 bridge 与 AI 实例交互
 - **rmux_bridge.py** — 通过 JSON-RPC 调用 Rust bridge，替代原 tmux subprocess
 - **rust/** — 全部 TDD 开发，65 个 Rust 测试 + 28 个 Python 测试
-- **observer.rs** — 独立 TUI 二进制，通过 rmux-sdk `output_stream` 实时流式渲染 8 个玩家终端
+- **observer.rs** — 独立 TUI 二进制，通过 rmux-sdk `render_stream` 触发刷新，并渲染 daemon 解析后的 `PaneSnapshot.visible_lines()`，避免直接显示 Claude Code 的 ANSI 控制序列
 
 ## 默认角色配置（8 人局）
 
@@ -163,6 +183,7 @@ methods:
 ## 规则要点
 
 - **发言超时**: 180s / **投票超时**: 150s / **夜间行动超时**: 120s / **预热等待**: 180s
+- 发言等待默认至少 300s；可通过 `rules.min_speak_wait_sec` 和 `rules.speak_poll_interval_sec` 调整，便于本地演示或快速测试
 - 平票时不处决，平安度过
 - 狼人数 ≥ 好人数时狼人胜利；狼人全灭时好人胜利
 - 女巫解药/毒药各限一次使用
